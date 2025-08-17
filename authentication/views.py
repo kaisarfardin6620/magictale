@@ -171,7 +171,8 @@ class ResendVerificationEmailAPIView(APIView):
 
 
 # Password management views
-class PasswordResetVerifyAPIView(APIView):
+    PasswordResetRequestAPIView,
+    ,
     """
     Step 1: Verify token from the reset link.
     Called when the user clicks the email link.
