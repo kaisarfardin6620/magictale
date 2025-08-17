@@ -390,13 +390,18 @@ class EmailChangeRequestAPIView(APIView):
         if serializer.is_valid():
             new_email = serializer.validated_data['new_email']
             user = request.user
-            
+
             # Check if the new email is already in use
             if User.objects.filter(email=new_email).exists():
-                return Response({'error': 'This email address is already in use.'}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {'error': 'This email address is already in use.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
             # Delete any old, unused email change tokens
-            AuthToken.objects.filter(user=user, token_type='email_change', is_used=False).delete()
+            AuthToken.objects.filter(
+                user=user, token_type='email_change', is_used=False
+            ).delete()
 
             token = AuthToken.objects.create(
                 user=user,
@@ -405,6 +410,7 @@ class EmailChangeRequestAPIView(APIView):
                 new_email=new_email
             )
 
+            # Build clickable link with token in query param
             email_change_url = request.build_absolute_uri(
                 reverse('email_change_confirm') + f'?token={token.token}'
             )
@@ -414,44 +420,69 @@ class EmailChangeRequestAPIView(APIView):
                 f'Please click the following link to confirm your email change: {email_change_url}',
                 [new_email]
             )
-            return Response({'message': 'Email change confirmation link sent to your new email.'}, status=status.HTTP_200_OK)
+
+            return Response(
+                {'message': 'Email change confirmation link sent to your new email.'},
+                status=status.HTTP_200_OK
+            )
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class EmailChangeConfirmAPIView(APIView):
     """
-    API view to confirm an email change.
+    API view to confirm an email change (via link).
     """
     permission_classes = [AllowAny]
 
-    def post(self, request):
-        serializer = EmailChangeConfirmSerializer(data=request.data)
-        if serializer.is_valid():
-            try:
-                token = AuthToken.objects.get(token=serializer.validated_data['token'], token_type='email_change')
+    def get(self, request):  # <-- changed from post() to get()
+        token_value = request.query_params.get('token')
 
-                if not token.is_valid():
-                    return Response({'error': 'Invalid or expired token.'}, status=status.HTTP_400_BAD_REQUEST)
-                
-                user = token.user
-                new_email = token.new_email
+        if not token_value:
+            return Response(
+                {'error': 'Token is required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-                # Check if the email is still not in use
-                if User.objects.filter(email=new_email).exclude(id=user.id).exists():
-                    return Response({'error': 'This email address is already in use.'}, status=status.HTTP_400_BAD_REQUEST)
-                
-                # Update user's email
-                user.email = new_email
-                user.save()
+        try:
+            token = AuthToken.objects.get(
+                token=token_value, token_type='email_change'
+            )
 
-                # Mark the token as used
-                token.is_used = True
-                token.save()
+            if not token.is_valid():
+                return Response(
+                    {'error': 'Invalid or expired token.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-                return Response({'message': 'Email changed successfully.'}, status=status.HTTP_200_OK)
-            except AuthToken.DoesNotExist:
-                return Response({'error': 'Invalid or expired token.'}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            user = token.user
+            new_email = token.new_email
+
+            # Ensure email still not in use
+            if User.objects.filter(email=new_email).exclude(id=user.id).exists():
+                return Response(
+                    {'error': 'This email address is already in use.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Update user's email
+            user.email = new_email
+            user.save()
+
+            # Mark token as used
+            token.is_used = True
+            token.save()
+
+            return Response(
+                {'message': 'Email changed successfully.'},
+                status=status.HTTP_200_OK
+            )
+
+        except AuthToken.DoesNotExist:
+            return Response(
+                {'error': 'Invalid or expired token.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class ProfilePictureView(APIView):
