@@ -21,7 +21,7 @@ if not SECRET_KEY:
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['magictale.onrender.com']  # Added for development; update for production
+ALLOWED_HOSTS = 'magictale.onrender.com'  # Added for development; update for production
 
 # Application definition
 INSTALLED_APPS = [
@@ -184,7 +184,7 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = os.getenv('EMAIL_HOST_USER')
 
 
-FRONTEND_URL = 'http://127.0.0.1:8001'
+FRONTEND_URL = 'magictale.onrender.com'
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
