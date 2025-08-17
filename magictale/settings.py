@@ -21,7 +21,7 @@ if not SECRET_KEY:
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost']  # Added for development; update for production
+ALLOWED_HOSTS = ['magictale.onrender.com']  # Added for development; update for production
 
 # Application definition
 INSTALLED_APPS = [
