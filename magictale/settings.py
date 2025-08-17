@@ -4,6 +4,8 @@ import os
 import json
 from dotenv import load_dotenv
 from decouple import config
+import dj_database_url
+from decouple import config
 
 # Load environment variables from .env file
 load_dotenv()
@@ -75,11 +77,16 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'magictale.settings')
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
+
+DATABASE_URL = config('DATABASE_URL')
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.parse(DATABASE_URL)
 }
 
 # Password validation
@@ -220,7 +227,7 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("redis://127.0.0.1:6379")],
+            "hosts": [os.getenv('REDIS_URL')],
         },
     },
 }
