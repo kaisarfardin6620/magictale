@@ -6,7 +6,8 @@ from dotenv import load_dotenv
 import dj_database_url
 import firebase_admin
 from firebase_admin import credentials
-
+from decouple import config
+import dj_database_url
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -65,8 +66,9 @@ ASGI_APPLICATION = 'magictale.asgi.application'
 
 DATABASES = {
     'default': dj_database_url.config(
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
-        conn_max_age=600
+        default=config("DATABASE_URL"),
+        conn_max_age=600,
+        ssl_require=True
     )
 }
 
