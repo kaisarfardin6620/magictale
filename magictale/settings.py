@@ -104,31 +104,46 @@ STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
-REDIS_URL = os.getenv('REDIS_URL')
+REDIS_URL = os.getenv("REDIS_URL")
+
 if REDIS_URL:
     CHANNEL_LAYERS = {
-        "default": { "BACKEND": "channels_redis.core.RedisChannelLayer", "CONFIG": { "hosts": [REDIS_URL] } },
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [REDIS_URL],  # Use Redis from env (Render production)
+            },
+        },
     }
 else:
+    # Local fallback for testing without Redis
     CHANNEL_LAYERS = {
-        "default": { "BACKEND": "channels_redis.core.RedisChannelLayer", "CONFIG": { "hosts": [("localhost", 6379)] } },
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        }
     }
 
+# Firebase setup
 try:
     firebase_creds_json_str = os.getenv("FIREBASE_CREDENTIALS_JSON")
-    
+
     if firebase_creds_json_str:
         firebase_creds_dict = json.loads(firebase_creds_json_str)
         cred = credentials.Certificate(firebase_creds_dict)
-        if not firebase_admin._apps:
-            firebase_admin.initialize_app(cred)
     else:
         cred_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH")
         if cred_path and os.path.exists(cred_path):
             cred = credentials.Certificate(cred_path)
-            if not firebase_admin._apps:
-                firebase_admin.initialize_app(cred)
         else:
-            print("WARNING: Firebase credentials not found. Set FIREBASE_CREDENTIALS_JSON for production or FIREBASE_SERVICE_ACCOUNT_PATH for local.")
+            cred = None
+            print(
+                "WARNING: Firebase credentials not found. "
+                "Set FIREBASE_CREDENTIALS_JSON for production or "
+                "FIREBASE_SERVICE_ACCOUNT_PATH for local."
+            )
+
+    if cred and not firebase_admin._apps:
+        firebase_admin.initialize_app(cred)
+
 except Exception as e:
     print(f"Error initializing Firebase Admin SDK: {e}")
