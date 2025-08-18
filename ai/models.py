@@ -19,6 +19,7 @@ class StoryProject(models.Model):
     difficulty = models.PositiveSmallIntegerField(default=1) 
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     progress = models.PositiveSmallIntegerField(default=0)  
+    custom_prompt = models.TextField(blank=True, default="") 
     model_used = models.CharField(max_length=80, default="gpt-4o-mini")  
     error = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)

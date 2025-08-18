@@ -1,0 +1,74 @@
+Watching for file changes with StatReloader
+Watching for file changes with StatReloader
+message='Request to Stripe api' method=post url=https://api.stripe.com/v1/customers
+api_version=2025-07-30.basil message='Post details' post_data=email=kaisarfardin128%40gmail.com
+Starting new HTTPS connection (1): api.stripe.com:443
+https://api.stripe.com:443 "POST /v1/customers HTTP/1.1" 200 637
+message='Stripe API response' path=https://api.stripe.com/v1/customers response_code=200
+body='{\n  "id": "cus_StGLAD8xMjEliF",\n  "object": "customer",\n  "address": null,\n  "balance": 0,\n  "created": 1755526451,\n  "currency": null,\n  "default_source": null,\n  "delinquent": false,\n  "description": null,\n  "discount": null,\n  "email": "kaisarfardin128@gmail.com",\n  "invoice_prefix": "R25XXUMC",\n  "invoice_settings": {\n    "custom_fields": null,\n    "default_payment_method": null,\n    "footer": null,\n    "rendering_options": null\n  },\n  "livemode": false,\n  "metadata": {},\n  "name": null,\n  "next_invoice_sequence": 1,\n  "phone": null,\n  "preferred_locales": [],\n  "shipping": null,\n  "tax_exempt": "none",\n  "test_clock": null\n}' message='API response body'
+link=https://dashboard.stripe.com/test/logs/req_d4ubLgijkDR5yg message='Dashboard link for request'
+message='Request to Stripe api' method=post url=https://api.stripe.com/v1/checkout/sessions
+api_version=2025-07-30.basil message='Post details' post_data=payment_method_types[0]=card&customer=cus_StGLAD8xMjEliF&line_items[0][price]=price_1RwsTM090fCkwKBzzGwDxzmH&line_items[0][quantity]=1&mode=subscription&subscription_data[trial_period_days]=14&success_url=http%3A%2F%2Flocalhost%3A3000%2Fsuccess%3Fsession_id%3D%7BCHECKOUT_SESSION_ID%7D&cancel_url=http%3A%2F%2Flocalhost%3A3000%2Fcancel
+https://api.stripe.com:443 "POST /v1/checkout/sessions HTTP/1.1" 200 2719
+message='Stripe API response' path=https://api.stripe.com/v1/checkout/sessions response_code=200
+body='{\n  "id": "cs_test_a1O1u7QGnd7d2ZzaRYYaUqMO4TCzD2DHD0BtuHOSPDlOs1GA4CvnJNfmhG",\n  "object": "checkout.session",\n  "adaptive_pricing": {\n    "enabled": false\n  },\n  "after_expiration": null,\n  "allow_promotion_codes": null,\n  "amount_subtotal": 0,\n  "amount_total": 0,\n  "automatic_tax": {\n    "enabled": false,\n    "liability": null,\n    "provider": null,\n    "status": null\n  },\n  "billing_address_collection": null,\n  "cancel_url": "http://localhost:3000/cancel",\n  "client_reference_id": null,\n  "client_secret": null,\n  "collected_information": {\n    "shipping_details": null\n  },\n  "consent": null,\n  "consent_collection": null,\n  "created": 1755526451,\n  "currency": "usd",\n  "currency_conversion": null,\n  "custom_fields": [],\n  "custom_text": {\n    "after_submit": null,\n    "shipping_address": null,\n    "submit": null,\n    "terms_of_service_acceptance": null\n  },\n  "customer": "cus_StGLAD8xMjEliF",\n  "customer_creation": null,\n  "customer_details": {\n    "address": null,\n    "email": "kaisarfardin128@gmail.com",\n    "name": null,\n    "phone": null,\n    "tax_exempt": "none",\n    "tax_ids": null\n  },\n  "customer_email": null,\n  "discounts": [],\n  "expires_at": 1755612851,\n  "invoice": null,\n  "invoice_creation": null,\n  "livemode": false,\n  "locale": null,\n  "metadata": {},\n  "mode": "subscription",\n  "origin_context": null,\n  "payment_intent": null,\n  "payment_link": null,\n  "payment_method_collection": "always",\n  "payment_method_configuration_details": null,\n  "payment_method_options": {\n    "card": {\n      "request_three_d_secure": "automatic"\n    }\n  },\n  "payment_method_types": [\n    "card"\n  ],\n  "payment_status": "unpaid",\n  "permissions": null,\n  "phone_number_collection": {\n    "enabled": false\n  },\n  "recovered_from": null,\n  "saved_payment_method_options": {\n    "allow_redisplay_filters": [\n      "always"\n    ],\n    "payment_method_remove": "disabled",\n    "payment_method_save": null\n  },\n  "setup_intent": null,\n  "shipping_address_collection": null,\n  "shipping_cost": null,\n  "shipping_options": [],\n  "status": "open",\n  "submit_type": null,\n  "subscription": null,\n  "success_url": "http://localhost:3000/success?session_id={CHECKOUT_SESSION_ID}",\n  "total_details": {\n    "amount_discount": 0,\n    "amount_shipping": 0,\n    "amount_tax": 0\n  },\n  "ui_mode": "hosted",\n  "url": "https://checkout.stripe.com/c/pay/cs_test_a1O1u7QGnd7d2ZzaRYYaUqMO4TCzD2DHD0BtuHOSPDlOs1GA4CvnJNfmhG#fidkdWxOYHwnPyd1blpxYHZxWjA0V3JsX2I1PDVjRm5yTkd%2FVnRJMTc0c2RWPFFAcTFzM0NxZ1RWV01HRmpiYk41aEJoZzRVUl9%2FcGhuPGNGfF89T21mZHVtc00wQ2xsXXRKUT02XDxjSnFpNTVcQFVnXDd%2FRicpJ2N3amhWYHdzYHcnP3F3cGApJ2lkfGpwcVF8dWAnPyd2bGtiaWBabHFgaCcpJ2BrZGdpYFVpZGZgbWppYWB3dic%2FcXdwYHgl",\n  "wallet_options": null\n}' message='API response body'
+link=https://dashboard.stripe.com/test/logs/req_Zd1nmttnM2dktD message='Dashboard link for request'
+message='Request to Stripe api' method=get url=https://api.stripe.com/v1/subscriptions/sub_1O1u7QGnd7dABCD12345
+api_version=2025-07-30.basil message='Post details' post_data=
+Starting new HTTPS connection (1): api.stripe.com:443
+https://api.stripe.com:443 "GET /v1/subscriptions/sub_1O1u7QGnd7dABCD12345 HTTP/1.1" 404 343
+message='Stripe API response' path=https://api.stripe.com/v1/subscriptions/sub_1O1u7QGnd7dABCD12345 response_code=404
+body='{\n  "error": {\n    "code": "resource_missing",\n    "doc_url": "https://stripe.com/docs/error-codes/resource-missing",\n    "message": "No such subscription: \'sub_1O1u7QGnd7dABCD12345\'",\n    "param": "id",\n    "request_log_url": "https://dashboard.stripe.com/test/logs/req_D4ExdJkxN43ZNx?t=1755526624",\n    "type": "invalid_request_error"\n  }\n}\n' message='API response body'
+link=https://dashboard.stripe.com/test/logs/req_D4ExdJkxN43ZNx message='Dashboard link for request'
+error_code=resource_missing error_message="No such subscription: 'sub_1O1u7QGnd7dABCD12345'" error_param=id error_type=invalid_request_error message='Stripe v1 API error received'
+Internal Server Error: /api/payments/webhook/
+Traceback (most recent call last):
+  File "C:\Users\kaisa\magictale\.venv\Lib\site-packages\django\core\handlers\exception.py", line 55, in inner
+    response = get_response(request)
+  File "C:\Users\kaisa\magictale\.venv\Lib\site-packages\django\core\handlers\base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "C:\Users\kaisa\magictale\.venv\Lib\site-packages\django\views\decorators\csrf.py", line 65, in _view_wrapper
+    return view_func(request, *args, **kwargs)
+  File "C:\Users\kaisa\magictale\subscription\webhooks.py", line 160, in stripe_webhook
+    stripe_sub = stripe.Subscription.retrieve(subscription_id)
+  File "C:\Users\kaisa\magictale\.venv\Lib\site-packages\stripe\_subscription.py", line 2953, in retrieve
+    instance.refresh()
+    ~~~~~~~~~~~~~~~~^^
+  File "C:\Users\kaisa\magictale\.venv\Lib\site-packages\stripe\_api_resource.py", line 38, in refresh
+    return self._request_and_refresh("get", self.instance_url())
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\kaisa\magictale\.venv\Lib\site-packages\stripe\_api_resource.py", line 128, in _request_and_refresh
+    obj = StripeObject._request(
+        self,
+    ...<4 lines>...
+        usage=usage,
+    )
+  File "C:\Users\kaisa\magictale\.venv\Lib\site-packages\stripe\_stripe_object.py", line 406, in _request
+    return self._requestor.request(
+           ~~~~~~~~~~~~~~~~~~~~~~~^
+        method,
+        ^^^^^^^
+    ...<4 lines>...
+        usage=usage,
+        ^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\kaisa\magictale\.venv\Lib\site-packages\stripe\_api_requestor.py", line 197, in request
+    resp = requestor._interpret_response(rbody, rcode, rheaders, api_mode)
+  File "C:\Users\kaisa\magictale\.venv\Lib\site-packages\stripe\_api_requestor.py", line 853, in _interpret_response
+    self.handle_error_response(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        rbody, rcode, resp.data, rheaders, api_mode
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\kaisa\magictale\.venv\Lib\site-packages\stripe\_api_requestor.py", line 336, in handle_error_response
+    raise err
+stripe._error.InvalidRequestError: Request req_D4ExdJkxN43ZNx: No such subscription: 'sub_1O1u7QGnd7dABCD12345'
+message='Request to Stripe api' method=get url=https://api.stripe.com/v1/subscriptions/sub_1RxTpf090fCkwKBzFpZmKkEv
+api_version=2025-07-30.basil message='Post details' post_data=
+Starting new HTTPS connection (1): api.stripe.com:443
+https://api.stripe.com:443 "GET /v1/subscriptions/sub_1RxTpf090fCkwKBzFpZmKkEv HTTP/1.1" 200 4576
+message='Stripe API response' path=https://api.stripe.com/v1/subscriptions/sub_1RxTpf090fCkwKBzFpZmKkEv response_code=200
+body='{\n  "id": "sub_1RxTpf090fCkwKBzFpZmKkEv",\n  "object": "subscription",\n  "application": null,\n  "application_fee_percent": null,\n  "automatic_tax": {\n    "disabled_reason": null,\n    "enabled": false,\n    "liability": null\n  },\n  "billing_cycle_anchor": 1756736082,\n  "billing_cycle_anchor_config": null,\n  "billing_mode": {\n    "type": "classic"\n  },\n  "billing_thresholds": null,\n  "cancel_at": null,\n  "cancel_at_period_end": false,\n  "canceled_at": null,\n  "cancellation_details": {\n    "comment": null,\n    "feedback": null,\n    "reason": null\n  },\n  "collection_method": "charge_automatically",\n  "created": 1755526482,\n  "currency": "usd",\n  "customer": "cus_StGLAD8xMjEliF",\n  "days_until_due": null,\n  "default_payment_method": "pm_1RxTpd090fCkwKBzngqoLXtN",\n  "default_source": null,\n  "default_tax_rates": [],\n  "description": null,\n  "discounts": [],\n  "ended_at": null,\n  "invoice_settings": {\n    "account_tax_ids": null,\n    "issuer": {\n      "type": "self"\n    }\n  },\n  "items": {\n    "object": "list",\n    "data": [\n      {\n        "id": "si_StGM197v45Yfsb",\n        "object": "subscription_item",\n        "billing_thresholds": null,\n        "created": 1755526482,\n        "current_period_end": 1756736082,\n        "current_period_start": 1755526482,\n        "discounts": [],\n        "metadata": {},\n        "plan": {\n          "id": "price_1RwsTM090fCkwKBzzGwDxzmH",\n          "object": "plan",\n          "active": true,\n          "amount": 499,\n          "amount_decimal": "499",\n          "billing_scheme": "per_unit",\n          "created": 1755382872,\n          "currency": "usd",\n          "interval": "month",\n          "interval_count": 1,\n          "livemode": false,\n          "metadata": {},\n          "meter": null,\n          "nickname": null,\n          "product": "prod_Ssdk9je3fj3io3",\n          "tiers_mode": null,\n          "transform_usage": null,\n          "trial_period_days": null,\n          "usage_type": "licensed"\n        },\n        "price": {\n          "id": "price_1RwsTM090fCkwKBzzGwDxzmH",\n          "object": "price",\n          "active": true,\n          "billing_scheme": "per_unit",\n          "created": 1755382872,\n          "currency": "usd",\n          "custom_unit_amount": null,\n          "livemode": false,\n          "lookup_key": null,\n          "metadata": {},\n          "nickname": null,\n          "product": "prod_Ssdk9je3fj3io3",\n          "recurring": {\n            "interval": "month",\n            "interval_count": 1,\n            "meter": null,\n            "trial_period_days": null,\n            "usage_type": "licensed"\n          },\n          "tax_behavior": "unspecified",\n          "tiers_mode": null,\n          "transform_quantity": null,\n          "type": "recurring",\n          "unit_amount": 499,\n          "unit_amount_decimal": "499"\n        },\n        "quantity": 1,\n        "subscription": "sub_1RxTpf090fCkwKBzFpZmKkEv",\n        "tax_rates": []\n      }\n    ],\n    "has_more": false,\n    "total_count": 1,\n    "url": "/v1/subscription_items?subscription=sub_1RxTpf090fCkwKBzFpZmKkEv"\n  },\n  "latest_invoice": "in_1RxTpe090fCkwKBztpMEbH1y",\n  "livemode": false,\n  "metadata": {},\n  "next_pending_invoice_item_invoice": null,\n  "on_behalf_of": null,\n  "pause_collection": null,\n  "payment_settings": {\n    "payment_method_options": {\n      "acss_debit": null,\n      "bancontact": null,\n      "card": {\n        "network": null,\n        "request_three_d_secure": "automatic"\n      },\n      "customer_balance": null,\n      "konbini": null,\n      "sepa_debit": null,\n      "us_bank_account": null\n    },\n    "payment_method_types": [\n      "card"\n    ],\n    "save_default_payment_method": "off"\n  },\n  "pending_invoice_item_interval": null,\n  "pending_setup_intent": null,\n  "pending_update": null,\n  "plan": {\n    "id": "price_1RwsTM090fCkwKBzzGwDxzmH",\n    "object": "plan",\n    "active": true,\n    "amount": 499,\n    "amount_decimal": "499",\n    "billing_scheme": "per_unit",\n    "created": 1755382872,\n    "currency": "usd",\n    "interval": "month",\n    "interval_count": 1,\n    "livemode": false,\n    "metadata": {},\n    "meter": null,\n    "nickname": null,\n    "product": "prod_Ssdk9je3fj3io3",\n    "tiers_mode": null,\n    "transform_usage": null,\n    "trial_period_days": null,\n    "usage_type": "licensed"\n  },\n  "quantity": 1,\n  "schedule": null,\n  "start_date": 1755526482,\n  "status": "trialing",\n  "test_clock": null,\n  "transfer_data": null,\n  "trial_end": 1756736082,\n  "trial_settings": {\n    "end_behavior": {\n      "missing_payment_method": "create_invoice"\n    }\n  },\n  "trial_start": 1755526482\n}' message='API response body'
+link=https://dashboard.stripe.com/test/logs/req_OLQY0FZUoueUBH message='Dashboard link for request'

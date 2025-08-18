@@ -1,50 +1,57 @@
-# urls.py
 from django.urls import path
-from rest_framework_simplejwt.views import (
-    TokenRefreshView,
-    TokenVerifyView,
-)
 from .views import (
-    MyTokenObtainPairView,
     SignupAPIView,
     EmailVerificationAPIView,
     ResendVerificationEmailAPIView,
-    PasswordResetRequestAPIView,
+    MyTokenObtainPairView,
+    
+    # === UPDATED PASSWORD RESET IMPORTS ===
+    PasswordResetInitiateAPIView,   # Renamed from PasswordResetRequestAPIView
+    PasswordResetVerifyAPIView,     # The new verification step
     PasswordResetConfirmAPIView,
+    # ======================================
+
     ChangePasswordAPIView,
     ProfileView,
-    DeleteAccountView,
+    FullNameUpdateAPIView,
     ProfilePictureView,
     UserActivityLogAPIView,
+    DeleteAccountView,
     EmailChangeRequestAPIView,
     EmailChangeConfirmAPIView,
-    FullNameUpdateAPIView
+    OnboardingStatusView,
 )
+from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
-    # JWT authentication paths
-    path('token/', MyTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    path('token/verify/', TokenVerifyView.as_view(), name='token_verify'),
-
-    # User signup and verification
+    # Auth
     path('signup/', SignupAPIView.as_view(), name='signup'),
-    path('verify-email/', EmailVerificationAPIView.as_view(), name='email_verification'),
-    path('verify-email/resend/', ResendVerificationEmailAPIView.as_view(), name='resend_verification_email'),
+    path('email-verify/', EmailVerificationAPIView.as_view(), name='email_verification'),
+    path('resend-verification/', ResendVerificationEmailAPIView.as_view(), name='resend_verification'),
+    path('login/', MyTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('login/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
-    # Password and profile management
-    path('password/change/', ChangePasswordAPIView.as_view(), name='password_change'),
-    path('password/reset/', PasswordResetRequestAPIView.as_view(), name='password_reset_request'),
-    path('password/reset/confirm/', PasswordResetConfirmAPIView.as_view(), name='password_reset_confirm'),
+    # Password Management
+    path('change-password/', ChangePasswordAPIView.as_view(), name='change_password'),
+    
+    # === NEW PASSWORD RESET URLS ===
+    # Step 1: User submits their email to start the process
+    path('password-reset/', PasswordResetInitiateAPIView.as_view(), name='password_reset_initiate'),
+    # Step 2: User clicks the link in their email, which hits this endpoint
+    path('password-reset/verify/', PasswordResetVerifyAPIView.as_view(), name='password_reset_verify'),
+    # Step 3: User submits the token from step 2 and their new password
+    path('password-reset/confirm/', PasswordResetConfirmAPIView.as_view(), name='password_reset_confirm'),
+    # ===============================
 
-    # Profile management
-    path('profile/', ProfileView.as_view(), name='user_profile'),
+    # Profile Management
+    path('profile/', ProfileView.as_view(), name='profile'),
+    path('profile/full-name/', FullNameUpdateAPIView.as_view(), name='update_full_name'),
     path('profile/picture/', ProfilePictureView.as_view(), name='profile_picture'),
-    path('profile/activity-log/', UserActivityLogAPIView.as_view(), name='user_activity_log'),
-    path('profile/delete/', DeleteAccountView.as_view(), name='delete_account'),
-    path('profile/update-full-name/', FullNameUpdateAPIView.as_view(), name='full_name_update'), # Added missing URL path
+    path('activity-log/', UserActivityLogAPIView.as_view(), name='activity_log'),
+    path('delete-account/', DeleteAccountView.as_view(), name='delete_account'),
 
-    # Email change
-    path('email/change/request/', EmailChangeRequestAPIView.as_view(), name='email_change_request'),
-    path('email/change/confirm/', EmailChangeConfirmAPIView.as_view(), name='email_change_confirm'),
+    # Email Change
+    path('email-change/', EmailChangeRequestAPIView.as_view(), name='email_change_request'),
+    path('email-change/confirm/', EmailChangeConfirmAPIView.as_view(), name='email_change_confirm'),
+    path('onboarding/', OnboardingStatusView.as_view(), name='onboarding_status'),
 ]

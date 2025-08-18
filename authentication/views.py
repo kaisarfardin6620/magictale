@@ -1,33 +1,27 @@
 # views.py
 from django.conf import settings
-from django.contrib.auth import authenticate
-from django.core.mail import send_mail
-from django.utils import timezone
 from django.contrib.auth.models import User
-from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.hashers import check_password
 from django.urls import reverse
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
-from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+import uuid
+from django.core.mail import send_mail
 
 from .models import AuthToken, UserProfile, PasswordHistory, UserActivityLog
 from .serializers import (
-    SignupSerializer,
-    PasswordResetRequestSerializer, PasswordResetConfirmSerializer,
+    SignupSerializer, PasswordResetRequestSerializer, PasswordResetConfirmSerializer,
     ChangePasswordSerializer, ProfileSerializer, UpdateProfileSerializer,
     ProfilePictureSerializer, EmailChangeRequestSerializer, ResendVerificationSerializer,
-    MyTokenObtainPairSerializer,
-    UserActivityLogSerializer,
-    FullNameUpdateSerializer,
+    MyTokenObtainPairSerializer, UserActivityLogSerializer, FullNameUpdateSerializer,
     EmailChangeConfirmSerializer
 )
-import uuid
-import random
-
+from .models import OnboardingStatus
+from .serializers import OnboardingStatusSerializer
 
 def get_client_ip(request):
     x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
@@ -40,49 +34,30 @@ def get_client_ip(request):
 def send_email(subject, message, recipient_list):
     try:
         send_mail(
-            subject,
-            message,
-            settings.DEFAULT_FROM_EMAIL,
-            recipient_list,
-            fail_silently=False,
+            subject, message, settings.DEFAULT_FROM_EMAIL,
+            recipient_list, fail_silently=False,
         )
     except Exception as e:
         print(f"Error sending email: {e}")
 
-
-# JWT authentication views
 class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
 
-
-# User signup and verification views
 class SignupAPIView(APIView):
-    """
-    API view to handle user signup.
-    """
     permission_classes = [AllowAny]
-
     def post(self, request):
         serializer = SignupSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            
-            # Log user activity
             UserActivityLog.objects.create(
-                user=user,
-                activity_type='signup',
-                ip_address=get_client_ip(request)
+                user=user, activity_type='signup', ip_address=get_client_ip(request)
             )
-
             token = AuthToken.objects.create(
-                user=user,
-                token=uuid.uuid4(),
-                token_type='email_verification',
+                user=user, token=uuid.uuid4(), token_type='email_verification'
             )
             verification_url = request.build_absolute_uri(
                 reverse('email_verification') + f'?token={token.token}'
             )
-
             send_email(
                 'Verify your email',
                 f'Please click the following link to verify your email: {verification_url}',
@@ -95,9 +70,6 @@ class SignupAPIView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class EmailVerificationAPIView(APIView):
-    """
-    API view to verify user email with a token.
-    """
     permission_classes = [AllowAny]
     def get(self, request):
         token_uuid = request.GET.get('token')
@@ -105,36 +77,23 @@ class EmailVerificationAPIView(APIView):
             return Response({'error': 'Token is required.'}, status=status.HTTP_400_BAD_REQUEST)
         try:
             token = AuthToken.objects.get(token=token_uuid, token_type='email_verification')
-
             if not token.is_valid():
                 return Response({'error': 'Invalid or expired token'}, status=status.HTTP_400_BAD_REQUEST)
-
             user = token.user
             user.is_active = True
             user.save()
-
             token.is_used = True
             token.save()
-
-            # Log user activity
             UserActivityLog.objects.create(
-                user=user,
-                activity_type='email_verification_success',
-                ip_address=get_client_ip(request)
+                user=user, activity_type='email_verification_success', ip_address=get_client_ip(request)
             )
-
             return Response(
-                {'message': 'Email verified successfully. You can now log in.'},
-                status=status.HTTP_200_OK
+                {'message': 'Email verified successfully. You can now log in.'}, status=status.HTTP_200_OK
             )
         except AuthToken.DoesNotExist:
             return Response({'error': 'Invalid or expired token'}, status=status.HTTP_400_BAD_REQUEST)
 
-
 class ResendVerificationEmailAPIView(APIView):
-    """
-    API view to resend a verification email.
-    """
     permission_classes = [AllowAny]
     def post(self, request):
         serializer = ResendVerificationSerializer(data=request.data)
@@ -143,120 +102,96 @@ class ResendVerificationEmailAPIView(APIView):
                 user = User.objects.get(username=serializer.validated_data['username'])
                 if user.is_active:
                     return Response({'message': 'This account is already active.'}, status=status.HTTP_400_BAD_REQUEST)
-                
-                # Delete any old, unused tokens of the same type
                 AuthToken.objects.filter(user=user, token_type='email_verification', is_used=False).delete()
-
                 token = AuthToken.objects.create(
-                    user=user,
-                    token=uuid.uuid4(),
-                    token_type='email_verification',
+                    user=user, token=uuid.uuid4(), token_type='email_verification'
                 )
                 verification_url = request.build_absolute_uri(
                     reverse('email_verification') + f'?token={token.token}'
                 )
-
                 send_email(
                     'Verify your email',
                     f'Please click the following link to verify your email: {verification_url}',
                     [user.email]
                 )
-                return Response(
-                    {"message": "Verification email has been resent."},
-                    status=status.HTTP_200_OK
-                )
+                return Response({"message": "Verification email has been resent."}, status=status.HTTP_200_OK)
             except User.DoesNotExist:
                 return Response({'error': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
-# Password management views
-class PasswordResetRequestAPIView(APIView):
-    """
-    Step 1: Verify token from the reset link.
-    Called when the user clicks the email link.
-    """
+class PasswordResetInitiateAPIView(APIView):
     permission_classes = [AllowAny]
+    def post(self, request):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        email = serializer.validated_data['email']
+        try:
+            user = User.objects.get(email=email)
+            AuthToken.objects.filter(user=user, token_type='password_reset', is_used=False).delete()
+            token = AuthToken.objects.create(user=user, token=uuid.uuid4(), token_type='password_reset')
+            reset_verification_url = request.build_absolute_uri(
+                reverse('password_reset_verify') + f'?token={token.token}'
+            )
+            send_email(
+                'Password Reset Request',
+                f'Please click the following link to reset your password: {reset_verification_url}',
+                [user.email]
+            )
+        except User.DoesNotExist:
+            pass
+        return Response(
+            {'message': 'If an account with that email exists, a password reset link has been sent.'},
+            status=status.HTTP_200_OK
+        )
 
+class PasswordResetVerifyAPIView(APIView):
+    permission_classes = [AllowAny]
     def get(self, request):
         token_value = request.query_params.get("token")
         if not token_value:
-            return Response({"error": "Token is required."}, status=status.HTTP_400_BAD_REQUEST)
-
+            return Response({"error": "Token is required in the link."}, status=status.HTTP_400_BAD_REQUEST)
         try:
             token = AuthToken.objects.get(token=token_value, token_type="password_reset", is_used=False)
             if not token.is_valid():
-                return Response({"error": "Invalid or expired token."}, status=status.HTTP_400_BAD_REQUEST)
-
-            # ✅ Instead of asking user to type token later, return a short-lived session token / ID
-            # (frontend will save this in localStorage or memory temporarily)
+                return Response({"error": "The password reset link is invalid or has expired."}, status=status.HTTP_400_BAD_REQUEST)
             return Response(
-                {"message": "Token verified. You may now reset your password.", "reset_id": str(token.token)},
+                {"message": "Token verified. You may now set your new password.", "reset_id": str(token.token)},
                 status=status.HTTP_200_OK,
             )
         except AuthToken.DoesNotExist:
-            return Response({"error": "Invalid or expired token."}, status=status.HTTP_400_BAD_REQUEST)
-
+            return Response({"error": "The password reset link is invalid or has expired."}, status=status.HTTP_400_BAD_REQUEST)
 
 class PasswordResetConfirmAPIView(APIView):
-    """
-    Step 2: Reset the password.
-    User only sends new password + confirm password.
-    The reset_id (token) is sent automatically by frontend (hidden from user).
-    """
     permission_classes = [AllowAny]
-
     def post(self, request):
-        reset_id = request.data.get("reset_id")  # frontend keeps this hidden
-        new_password = request.data.get("new_password")
-        confirm_password = request.data.get("confirm_password")
-
-        if not reset_id or not new_password or not confirm_password:
-            return Response({"error": "reset_id, new_password, and confirm_password are required."},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        if new_password != confirm_password:
-            return Response({"error": "Passwords do not match."}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        reset_id = serializer.validated_data['reset_id']
+        new_password = serializer.validated_data['new_password']
 
         try:
             token = AuthToken.objects.get(token=reset_id, token_type="password_reset", is_used=False)
             if not token.is_valid():
-                return Response({"error": "Invalid or expired token."}, status=status.HTTP_400_BAD_REQUEST)
-
+                return Response({"error": "The password reset session is invalid or has expired."}, status=status.HTTP_400_BAD_REQUEST)
             user = token.user
-
-            # Prevent reusing same password
-            from django.contrib.auth.hashers import check_password
             if check_password(new_password, user.password):
-                return Response({"error": "New password cannot be the same as the old one."},
-                                status=status.HTTP_400_BAD_REQUEST)
-
+                return Response({"error": "New password cannot be the same as the old one."}, status=status.HTTP_400_BAD_REQUEST)
             user.set_password(new_password)
             user.save()
-
-            # Save to password history
             PasswordHistory.objects.create(user=user, password_hash=user.password)
-
             token.is_used = True
             token.save()
-
-            # Blacklist all outstanding JWTs (force logout everywhere)
-            outstanding_tokens = OutstandingToken.objects.filter(user=user)
-            for jwt_token in outstanding_tokens:
+            for jwt_token in OutstandingToken.objects.filter(user=user):
                 BlacklistedToken.objects.get_or_create(token=jwt_token)
-
             UserActivityLog.objects.create(user=user, activity_type="password_reset", ip_address=get_client_ip(request))
-
-            return Response({"message": "Password reset successfully."}, status=status.HTTP_200_OK)
-
+            return Response({"message": "Password has been reset successfully."}, status=status.HTTP_200_OK)
         except AuthToken.DoesNotExist:
-            return Response({"error": "Invalid or expired token."}, status=status.HTTP_400_BAD_REQUEST)
-
+            return Response({"error": "The password reset session is invalid or has expired."}, status=status.HTTP_400_BAD_REQUEST)
 
 class ChangePasswordAPIView(APIView):
-    """
-    API view to change a user's password.
-    """
     permission_classes = [IsAuthenticated]
     def post(self, request):
         serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
@@ -264,61 +199,57 @@ class ChangePasswordAPIView(APIView):
             user = request.user
             user.set_password(serializer.validated_data['new_password'])
             user.save()
-
-            # Add password to history
             PasswordHistory.objects.create(user=user, password_hash=user.password)
-
-            # Blacklist all outstanding JWT tokens for this user
-            outstanding_tokens = OutstandingToken.objects.filter(user=user)
-            for jwt_token in outstanding_tokens:
+            for jwt_token in OutstandingToken.objects.filter(user=user):
                 BlacklistedToken.objects.get_or_create(token=jwt_token)
-
-            # Log user activity
             UserActivityLog.objects.create(
-                user=user,
-                activity_type='password_change',
-                ip_address=get_client_ip(request)
+                user=user, activity_type='password_change', ip_address=get_client_ip(request)
             )
-
             return Response({'message': 'Password changed successfully.'}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
-# Profile management views
+# ===================================================================
+# == THIS VIEW IS NOW FIXED =========================================
+# ===================================================================
 class ProfileView(APIView):
-    """
-    API view to get and update a user's profile and basic info.
-    """
     permission_classes = [IsAuthenticated]
-
     def get(self, request):
         try:
+            # The .select_related('current_plan') has been removed because the 'current_plan'
+            # field is not a direct ForeignKey on the UserProfile model. Removing it
+            # fixes the FieldError crash.
             profile = UserProfile.objects.get(user=request.user)
-            # Combine user and profile data
-            data = {
+            
+            serializer = ProfileSerializer(profile)
+            user_data = {
                 'first_name': request.user.first_name,
                 'last_name': request.user.last_name,
                 'email': request.user.email,
-                'phone_number': profile.phone_number
             }
-            return Response(data, status=status.HTTP_200_OK)
+            response_data = {**user_data, **serializer.data}
+            return Response(response_data, status=status.HTTP_200_OK)
         except UserProfile.DoesNotExist:
             return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     def put(self, request):
-        serializer = UpdateProfileSerializer(request.user.profile, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({'message': 'Profile updated successfully.'}, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
+        try:
+            profile = UserProfile.objects.get(user=request.user)
+            # NOTE: You were using UpdateProfileSerializer in your previous code, 
+            # but ProfileSerializer in the GET method. I am using UpdateProfileSerializer
+            # here as it seems more appropriate for updating.
+            serializer = UpdateProfileSerializer(profile, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response({'message': 'Profile updated successfully.'}, status=status.HTTP_200_OK)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except UserProfile.DoesNotExist:
+            return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+# ===================================================================
+# == END OF CHANGES =================================================
+# ===================================================================
 
 class FullNameUpdateAPIView(APIView):
-    """
-    API view to update a user's first and last name.
-    """
     permission_classes = [IsAuthenticated]
-
     def put(self, request):
         serializer = FullNameUpdateSerializer(request.user, data=request.data, partial=True)
         if serializer.is_valid():
@@ -326,21 +257,15 @@ class FullNameUpdateAPIView(APIView):
             return Response({'message': 'Full name updated successfully.'}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
 class ProfilePictureView(APIView):
-    """
-    API view to get and update a user's profile picture.
-    """
     permission_classes = [IsAuthenticated]
-
     def get(self, request):
         try:
             profile = UserProfile.objects.get(user=request.user)
             serializer = ProfilePictureSerializer(profile)
             return Response(serializer.data, status=status.HTTP_200_OK)
         except UserProfile.DoesNotExist:
-            return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_REQUEST)
-
+            return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
     def put(self, request):
         try:
             profile = UserProfile.objects.get(user=request.user)
@@ -352,154 +277,92 @@ class ProfilePictureView(APIView):
         except UserProfile.DoesNotExist:
             return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-
 class UserActivityLogAPIView(APIView):
-    """
-    API view to retrieve a user's activity log.
-    """
     permission_classes = [IsAuthenticated]
-
     def get(self, request):
         logs = UserActivityLog.objects.filter(user=request.user).order_by('-timestamp')
         serializer = UserActivityLogSerializer(logs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-
 class DeleteAccountView(APIView):
-    """
-    API view to delete a user's account.
-    """
     permission_classes = [IsAuthenticated]
-
     def delete(self, request):
-        user = request.user
-        user.delete()
+        request.user.delete()
         return Response({'message': 'Account deleted successfully.'}, status=status.HTTP_204_NO_CONTENT)
 
-
-# Email change views
 class EmailChangeRequestAPIView(APIView):
-    """
-    API view to request an email change.
-    """
     permission_classes = [IsAuthenticated]
-
     def post(self, request):
         serializer = EmailChangeRequestSerializer(data=request.data)
         if serializer.is_valid():
             new_email = serializer.validated_data['new_email']
             user = request.user
-
-            # Check if the new email is already in use
             if User.objects.filter(email=new_email).exists():
-                return Response(
-                    {'error': 'This email address is already in use.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            # Delete any old, unused email change tokens
-            AuthToken.objects.filter(
-                user=user, token_type='email_change', is_used=False
-            ).delete()
-
+                return Response({'error': 'This email address is already in use.'}, status=status.HTTP_400_BAD_REQUEST)
+            AuthToken.objects.filter(user=user, token_type='email_change', is_used=False).delete()
             token = AuthToken.objects.create(
-                user=user,
-                token=uuid.uuid4(),
-                token_type='email_change',
-                new_email=new_email
+                user=user, token=uuid.uuid4(), token_type='email_change', new_email=new_email
             )
-
-            # Build clickable link with token in query param
             email_change_url = request.build_absolute_uri(
                 reverse('email_change_confirm') + f'?token={token.token}'
             )
-
             send_email(
                 'Confirm your email change',
                 f'Please click the following link to confirm your email change: {email_change_url}',
                 [new_email]
             )
-
             return Response(
-                {'message': 'Email change confirmation link sent to your new email.'},
+                {'message': 'A confirmation link has been sent to your new email address.'},
                 status=status.HTTP_200_OK
             )
-
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
 class EmailChangeConfirmAPIView(APIView):
-    """
-    API view to confirm an email change (via link).
-    """
     permission_classes = [AllowAny]
-
-    def get(self, request):  # <-- changed from post() to get()
+    def get(self, request):
         token_value = request.query_params.get('token')
-
         if not token_value:
-            return Response(
-                {'error': 'Token is required.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
+            return Response({'error': 'Token is required.'}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            token = AuthToken.objects.get(
-                token=token_value, token_type='email_change'
-            )
-
+            token = AuthToken.objects.get(token=token_value, token_type='email_change', is_used=False)
             if not token.is_valid():
-                return Response(
-                    {'error': 'Invalid or expired token.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
+                return Response({'error': 'Invalid or expired token.'}, status=status.HTTP_400_BAD_REQUEST)
             user = token.user
             new_email = token.new_email
-
-            # Ensure email still not in use
             if User.objects.filter(email=new_email).exclude(id=user.id).exists():
-                return Response(
-                    {'error': 'This email address is already in use.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            # Update user's email
+                return Response({'error': 'This email address is already in use by another account.'}, status=status.HTTP_400_BAD_REQUEST)
             user.email = new_email
             user.save()
-
-            # Mark token as used
             token.is_used = True
             token.save()
-
-            return Response(
-                {'message': 'Email changed successfully.'},
-                status=status.HTTP_200_OK
-            )
-
+            return Response({'message': 'Your email has been changed successfully.'}, status=status.HTTP_200_OK)
         except AuthToken.DoesNotExist:
+            return Response({'error': 'Invalid or expired token.'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class OnboardingStatusView(APIView):
+    """
+    API view for the user to get, create, or update their onboarding status.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Retrieve the current user's onboarding status."""
+        try:
+            onboarding_status = OnboardingStatus.objects.get(user=request.user)
+            serializer = OnboardingStatusSerializer(onboarding_status)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except OnboardingStatus.DoesNotExist:
             return Response(
-                {'error': 'Invalid or expired token.'},
-                status=status.HTTP_400_BAD_REQUEST
+                {'detail': 'Onboarding not started yet.'}, 
+                status=status.HTTP_404_NOT_FOUND
             )
 
-
-class ProfilePictureView(APIView):
-    permission_classes = [IsAuthenticated]
-    def get(self, request):
-        try:
-            profile = UserProfile.objects.get(user=request.user)
-            serializer = ProfilePictureSerializer(profile)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except UserProfile.DoesNotExist:
-            return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
-    def put(self, request):
-        try:
-            profile = UserProfile.objects.get(user=request.user)
-            serializer = ProfilePictureSerializer(profile, data=request.data, partial=True)
-            if serializer.is_valid():
-                serializer.save()
-                return Response({'message': 'Profile picture updated successfully.'}, status=status.HTTP_200_OK)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        except UserProfile.DoesNotExist:
-            return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+    def post(self, request):
+        """Create or update the current user's onboarding status."""
+        # We pass the request context to the serializer so it can access the user
+        serializer = OnboardingStatusSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            serializer.save() # The serializer's .create() method will be called
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)            

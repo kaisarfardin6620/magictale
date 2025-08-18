@@ -1,21 +1,13 @@
 from django.db import models
-
-# Create your models here.
-# models.py
-from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.core.validators import RegexValidator
 import uuid
-
 from django.contrib.auth.models import User
 from django.db import models
 from django.core.validators import RegexValidator
 
 class UserProfile(models.Model):
-    """
-    Extends the built-in Django User model with additional profile information.
-    """
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     profile_picture = models.ImageField(upload_to='profile_pictures/', blank=True, null=True)
 
@@ -31,23 +23,21 @@ class UserProfile(models.Model):
         ]
     )
 
-    # New fields for app functionality
     email_verified = models.BooleanField(default=False)
     allow_push_notifications = models.BooleanField(default=True)
     parental_consent = models.BooleanField(default=False)
     accepted_terms = models.BooleanField(default=False)
+    
 
-    # Subscription/Trial info
-    trial_start = models.DateTimeField(blank=True, null=True)
-    trial_end = models.DateTimeField(blank=True, null=True)
     subscription_active = models.BooleanField(default=False)
 
+    trial_end_date = models.DateTimeField(blank=True, null=True)
+    external_subscription_id = models.CharField(max_length=100, blank=True, null=True, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.user.username
-
 
 
 class AuthToken(models.Model):
@@ -141,7 +131,7 @@ class OnboardingStatus(models.Model):
     child_name = models.CharField(max_length=100, blank=True, null=True)
     age = models.PositiveIntegerField(blank=True, null=True)
     pronouns = models.CharField(max_length=50, blank=True, null=True)
-    favourite_animal = models.CharField(max_length=100, blank=True, null=True)
+    favorite_animal = models.CharField(max_length=100, blank=True, null=True)
     favorite_color = models.CharField(max_length=50, blank=True, null=True)
     onboarding_complete = models.BooleanField(default=False)
 
