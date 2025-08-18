@@ -13,7 +13,11 @@ from .serializers import (
     StoryProjectCreateSerializer,
     StoryProjectDetailSerializer,
 )
-from .engine import run_generation_async  
+from .engine import run_generation_async
+
+# === STEP 1: IMPORT THE REUSABLE PERMISSION CLASS ===
+from authentication.permissions import HasActiveSubscription
+
 
 class IsOwner(permissions.BasePermission):
     """
@@ -26,16 +30,12 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
     """
     A ViewSet for viewing, creating, and managing story projects.
     """
-    # The default queryset for the ViewSet
     queryset = StoryProject.objects.all()
-    
-    # === FIX: Added the default serializer_class attribute ===
-    # This is required by ModelViewSet and will be used for actions like
-    # list, retrieve, update, etc.
     serializer_class = StoryProjectDetailSerializer
     
-    # The permission classes control who can access the view
-    permission_classes = [permissions.IsAuthenticated, IsOwner]
+    # === STEP 2: ADD THE SUBSCRIPTION PERMISSION TO THE VIEWSET ===
+    # Now, all actions in this ViewSet require an active subscription.
+    permission_classes = [permissions.IsAuthenticated, IsOwner, HasActiveSubscription]
 
     def get_queryset(self):
         """
@@ -52,8 +52,6 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         """
         if self.action == "create":
             return StoryProjectCreateSerializer
-        # For 'list', 'retrieve', 'update', 'partial_update', 'destroy',
-        # it will fall back to the default serializer_class defined above.
         return super().get_serializer_class()
 
     @action(detail=True, methods=["post"])
@@ -61,20 +59,9 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         """
         Custom action to start the AI generation for a story project.
         """
-        # === SUBSCRIPTION CHECK GATE ===
-        try:
-            subscription = request.user.subscription
-            if subscription.status not in ['active', 'trialing']:
-                return Response(
-                    {"detail": "An active subscription is required to generate stories."},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-        except AttributeError: # Catches if user.subscription doesn't exist
-            return Response(
-                {"detail": "You do not have a subscription."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        # === END OF CHECK ===
+        # === STEP 3: REMOVE THE MANUAL SUBSCRIPTION CHECK ===
+        # The HasActiveSubscription permission class now handles this for the entire view.
+        # This makes the code much cleaner.
 
         project = self.get_object() # Use get_object() which handles 404s for you
         if project.status not in ("pending", "failed", "canceled"):

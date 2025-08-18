@@ -24,20 +24,16 @@ class SubscriptionViewSet(viewsets.ViewSet):
 
         user = request.user
         
-        # --- UPDATED LOGIC ---
-        # Try to get an existing Stripe customer ID from the user's subscription
         try:
             subscription = user.subscription
             customer_id = subscription.stripe_customer_id
         except Subscription.DoesNotExist:
-            # If no subscription record exists, create a new Stripe customer
             customer = stripe.Customer.create(email=user.email)
             customer_id = customer.id
-        # --- END OF UPDATED LOGIC ---
 
         checkout_session = stripe.checkout.Session.create(
             payment_method_types=["card"],
-            customer=customer_id, # Use the existing or new customer_id
+            customer=customer_id,
             line_items=[{
                 "price": PRICE_IDS[plan],
                 "quantity": 1,
@@ -48,25 +44,17 @@ class SubscriptionViewSet(viewsets.ViewSet):
             cancel_url="http://localhost:3000/cancel",
         )
 
-        # Create or update the local subscription record with the customer ID
-        # Subscription.objects.update_or_create(
-        #     user=user,
-        #     defaults={
-        #         "stripe_customer_id": customer_id,
-        #         "plan": plan,
-        #         # The webhook will update the status to 'trialing' or 'active' later
-        #     }
-        # )
+        # --- THIS IS THE FIX ---
+        # Create or update the local subscription record BEFORE returning.
+        Subscription.objects.update_or_create(
+            user=user,
+            defaults={
+                "stripe_customer_id": customer_id,
+                "plan": plan,
+                # Let's set a temporary status. The webhook will finalize it.
+                "status": "pending_confirmation", 
+            }
+        )
+        # ----------------------
 
         return Response({"checkout_url": checkout_session.url})
-
-
-        Subscription.objects.update_or_create(
-    user=user,
-    defaults={
-        "stripe_customer_id": customer_id,
-        "plan": plan,
-        # Let's set a temporary status. The webhook will finalize it.
-        "status": "pending_confirmation", 
-    }
-)

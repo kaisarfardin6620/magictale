@@ -22,6 +22,7 @@ from .serializers import (
 )
 from .models import OnboardingStatus
 from .serializers import OnboardingStatusSerializer
+from .permissions import HasActiveSubscription
 
 def get_client_ip(request):
     x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
@@ -208,18 +209,11 @@ class ChangePasswordAPIView(APIView):
             return Response({'message': 'Password changed successfully.'}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-# ===================================================================
-# == THIS VIEW IS NOW FIXED =========================================
-# ===================================================================
 class ProfileView(APIView):
     permission_classes = [IsAuthenticated]
     def get(self, request):
         try:
-            # The .select_related('current_plan') has been removed because the 'current_plan'
-            # field is not a direct ForeignKey on the UserProfile model. Removing it
-            # fixes the FieldError crash.
             profile = UserProfile.objects.get(user=request.user)
-            
             serializer = ProfileSerializer(profile)
             user_data = {
                 'first_name': request.user.first_name,
@@ -234,9 +228,6 @@ class ProfileView(APIView):
     def put(self, request):
         try:
             profile = UserProfile.objects.get(user=request.user)
-            # NOTE: You were using UpdateProfileSerializer in your previous code, 
-            # but ProfileSerializer in the GET method. I am using UpdateProfileSerializer
-            # here as it seems more appropriate for updating.
             serializer = UpdateProfileSerializer(profile, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
@@ -244,9 +235,6 @@ class ProfileView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except UserProfile.DoesNotExist:
             return Response({'error': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
-# ===================================================================
-# == END OF CHANGES =================================================
-# ===================================================================
 
 class FullNameUpdateAPIView(APIView):
     permission_classes = [IsAuthenticated]
@@ -343,8 +331,10 @@ class EmailChangeConfirmAPIView(APIView):
 class OnboardingStatusView(APIView):
     """
     API view for the user to get, create, or update their onboarding status.
+    This action requires an active subscription.
     """
-    permission_classes = [IsAuthenticated]
+    # === FIX: Added the HasActiveSubscription permission class ===
+    permission_classes = [IsAuthenticated, HasActiveSubscription]
 
     def get(self, request):
         """Retrieve the current user's onboarding status."""
@@ -363,6 +353,6 @@ class OnboardingStatusView(APIView):
         # We pass the request context to the serializer so it can access the user
         serializer = OnboardingStatusSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            serializer.save() # The serializer's .create() method will be called
+            serializer.save() # The serializer's .create() or .update() method will be called
             return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)            
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

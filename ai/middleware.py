@@ -3,7 +3,9 @@
 from urllib.parse import parse_qs
 from channels.db import database_sync_to_async
 from channels.middleware import BaseMiddleware
-from django.contrib.auth.models import AnonymousUser, User
+# === FIX: DO NOT IMPORT DJANGO MODELS AT THE TOP LEVEL ===
+# We will import them locally inside the functions that need them.
+# from django.contrib.auth.models import AnonymousUser, User
 from django.conf import settings
 import jwt
 
@@ -12,6 +14,10 @@ def get_user_from_jwt(token_key: str):
     """
     Decodes a JWT token and fetches the corresponding user.
     """
+    # === FIX: Import models here, inside the function ===
+    # By the time this function is called, Django's settings will be loaded.
+    from django.contrib.auth.models import AnonymousUser, User
+
     try:
         # Decode the token using the secret key from your settings
         decoded_data = jwt.decode(token_key, settings.SECRET_KEY, algorithms=["HS256"])
@@ -23,6 +29,9 @@ def get_user_from_jwt(token_key: str):
 
 class JWTAuthMiddleware(BaseMiddleware):
     async def __call__(self, scope, receive, send):
+        # === FIX: Import AnonymousUser here for the same reason ===
+        from django.contrib.auth.models import AnonymousUser
+        
         # Parse the token from the query string (e.g., ws://.../?token=ey...)
         query = parse_qs(scope.get("query_string", b"").decode())
         token_list = query.get("token", [])

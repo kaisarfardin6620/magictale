@@ -248,16 +248,21 @@
 #     FIREBASE_CREDENTIALS = None
 
 
+# settings.py
+
+# settings.py
 
 from pathlib import Path
 from datetime import timedelta
 import os
-import json
 from dotenv import load_dotenv
-from decouple import config
-import dj_database_url
+import firebase_admin
+from firebase_admin import credentials
 
-# Load environment variables from .env file
+# =================================================================
+# === STEP 1: LOAD ENVIRONMENT VARIABLES AT THE VERY TOP
+# =================================================================
+# This line MUST be here, before any other settings are defined.
 load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -271,14 +276,12 @@ if not SECRET_KEY:
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-# <-- CHANGED: Added localhost and 127.0.0.1 for local development
 ALLOWED_HOSTS = ['magictale.onrender.com', 'localhost', '127.0.0.1']
 
-# <-- CHANGED: Added local URLs for CSRF protection
 CSRF_TRUSTED_ORIGINS = [
     'https://magictale.onrender.com',
-    'http://localhost:8000',
-    'http://127.0.0.1:8000',
+    'http://localhost:8001',
+    'http://127.0.0.1:8001',
 ]
 
 # Application definition
@@ -330,9 +333,6 @@ TEMPLATES = [
 
 ASGI_APPLICATION = 'magictale.asgi.application'
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'magictale.settings')
-
-# <-- NOTE: Using SQLite for local development as requested.
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -340,13 +340,6 @@ DATABASES = {
     }
 }
 
-# <-- NOTE: Production database configuration is kept commented out.
-# DATABASE_URL = config('DATABASE_URL')
-# DATABASES = {
-#     'default': dj_database_url.parse(DATABASE_URL)
-# }
-
-# Password validation
 AUTH_PASSWORD_VALIDATORS = [
     { 'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator', },
     { 'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', },
@@ -354,26 +347,20 @@ AUTH_PASSWORD_VALIDATORS = [
     { 'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator', },
 ]
 
-# Internationalization
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-# Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# REST Framework configuration for JWT
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ),
+    'DEFAULT_AUTHENTICATION_CLASSES': ('rest_framework_simplejwt.authentication.JWTAuthentication',),
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle'
@@ -390,81 +377,54 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'TOKEN_OBTAIN_SERIALIZER': 'authentication.serializers.MyTokenObtainPairSerializer',
-    # --- Other settings are fine for local use ---
-    'UPDATE_LAST_LOGIN': False,
     'ALGORITHM': 'HS256',
     'SIGNING_KEY': SECRET_KEY,
-    'VERIFYING_KEY': None,
-    'AUDIENCE': None,
-    'ISSUER': None,
-    'JWK_URL': None,
-    'LEEWAY': 0,
-    'AUTH_HEADER_TYPES': ('Bearer',),
-    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
-    'USER_AUTHENTICATION_RULE': 'rest_framework_simplejwt.authentication.default_user_authentication_rule',
-    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
-    'TOKEN_TYPE_CLAIM': 'token_type',
-    'TOKEN_USER_CLASS': 'rest_framework_simplejwt.models.TokenUser',
-    'JTI_CLAIM': 'jti',
-    'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'refresh_exp',
-    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
-    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
+    'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-# <-- CHANGED: Switched to Console Backend for easy email debugging.
-
-# <-- NOTE: The following SMTP settings are not needed for the console backend.
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_USE_SSL = False
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = os.getenv('EMAIL_HOST_USER')
 
-# <-- CHANGED: Point this to your local frontend URL.
-# This is important for generating correct links in emails (e.g., password reset).
-FRONTEND_URL = 'http://localhost:3000' # Or whatever port your frontend runs on
+FRONTEND_URL = 'http://localhost:3000'
 
-# --- API Keys (loaded from .env) ---
+# --- API Keys ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console': { 'class': 'logging.StreamHandler', },
-        'file': { 'class': 'logging.FileHandler', 'filename': os.path.join(BASE_DIR, 'debug.log'), },
-    },
-    'loggers': {
-        '': { 'handlers': ['console', 'file'], 'level': 'DEBUG', 'propagate': True, },
-    },
-}
+# --- Channels & Redis Configuration ---
+REDIS_HOST = os.getenv("REDIS_HOST")
+REDIS_PORT = os.getenv("REDIS_PORT")
+REDIS_USERNAME = os.getenv("REDIS_USERNAME")
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
 
-# <-- CHANGED: Simplified Channels configuration for a standard local Redis server.
-# Ensure you have Redis running on your machine.
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [("localhost", 6379)],
-        },
-    },
-}
-
-# --- Firebase (loaded from .env) ---
-FIREBASE_CREDENTIALS_PATH = os.getenv('FIREBASE_CREDENTIALS_PATH')
-if FIREBASE_CREDENTIALS_PATH:
-    with open(os.path.join(BASE_DIR, FIREBASE_CREDENTIALS_PATH), 'r') as f:
-        FIREBASE_CREDENTIALS = json.load(f)
+if all([REDIS_HOST, REDIS_PORT, REDIS_PASSWORD]):
+    REDIS_URL = f"rediss://{REDIS_USERNAME}:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}"
+    CHANNEL_LAYERS = {
+        "default": { "BACKEND": "channels_redis.core.RedisChannelLayer", "CONFIG": { "hosts": [REDIS_URL] } },
+    }
 else:
-    FIREBASE_CREDENTIALS = None
+    CHANNEL_LAYERS = {
+        "default": { "BACKEND": "channels_redis.core.RedisChannelLayer", "CONFIG": { "hosts": [("localhost", 6379)] } },
+    }
 
-
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')    
+# =================================================================
+# === FINAL, CORRECT FIREBASE INITIALIZATION BLOCK
+# =================================================================
+try:
+    cred_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH")
+    if cred_path and os.path.exists(cred_path):
+        cred = credentials.Certificate(cred_path)
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(cred)
+    else:
+        print(f"WARNING: Firebase credential file not found. Check FIREBASE_SERVICE_ACCOUNT_PATH in your .env file.")
+except Exception as e:
+    print(f"Error initializing Firebase Admin SDK: {e}")

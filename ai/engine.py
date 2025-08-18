@@ -105,7 +105,10 @@ def _split_into_pages(text: str) -> List[str]:
 
 @sync_to_async
 def _generate_and_save_image(page: StoryPage, project: StoryProject):
-    """Generates an image for a page and saves the resulting URL to the model."""
+    """
+    Generates an image for a page.
+    IMPORTANT: This function now raises an exception on failure.
+    """
     prompt = _build_image_prompt(page.text, project)
     try:
         response = client.images.generate(
@@ -114,20 +117,29 @@ def _generate_and_save_image(page: StoryPage, project: StoryProject):
             n=1,
             size="1024x1024",
             response_format="url",
+            # === FIX: Add a timeout to prevent hanging ===
+            timeout=120.0, # 2 minutes
         )
         page.image_url = response.data[0].url
         page.save(update_fields=["image_url"])
     except Exception as e:
+        # === FIX: Re-raise the exception to be caught by the main task ===
         print(f"Image generation failed for project {project.id}, page {page.index}: {e}")
+        raise e
 
 @sync_to_async
 def _generate_and_save_audio(page: StoryPage, project: StoryProject):
-    """Generates audio for a page, saves it as an MP3, and stores the URL."""
+    """
+    Generates audio for a page.
+    IMPORTANT: This function now raises an exception on failure.
+    """
     try:
         response = client.audio.speech.create(
             model="tts-1",
             voice=project.voice or "alloy",
-            input=page.text
+            input=page.text,
+            # === FIX: Add a timeout ===
+            timeout=60.0, # 1 minute
         )
         # Define the file path and URL based on MEDIA settings
         audio_dir = Path(settings.MEDIA_ROOT) / 'audio'
@@ -139,7 +151,9 @@ def _generate_and_save_audio(page: StoryPage, project: StoryProject):
         page.audio_url = f"{settings.MEDIA_URL}audio/{page.id}.mp3"
         page.save(update_fields=["audio_url"])
     except Exception as e:
+        # === FIX: Re-raise the exception ===
         print(f"Audio generation failed for project {project.id}, page {page.index}: {e}")
+        raise e
 
 # --- Main Asynchronous Generation Task ---
 
@@ -164,6 +178,8 @@ async def run_generation_async(project_id: int):
                 {"role": "user", "content": prompt}
             ],
             temperature=0.9,
+            # === FIX: Add a timeout here as well ===
+            timeout=90.0, # 1.5 minutes
         )
         await _update_progress(project, progress=50)
 
