@@ -150,10 +150,16 @@ except Exception as e:
 
 
 
-CELERY_BROKER_URL = REDIS_URL
-CELERY_RESULT_BACKEND = REDIS_URL  # <-- RECOMMENDED: Using Redis is more performant than the database.
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+# Try to import the local_settings.py file created by the build script
+try:
+    from .local_settings import *
+    print("Successfully imported local_settings.py")
+except ImportError:
+    print("Could not import local_settings.py - running locally or build failed.")
+    pass
