@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# This script will run both the Celery worker and the Daphne web server.
+# The "&" symbol runs the first command in the background.
+
+echo "Starting Celery worker..."
+celery -A magictale worker -l info &
+
+echo "Starting Daphne server..."
+daphne -b 0.0.0.0 -p $PORT magictale.asgi:application
