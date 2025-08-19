@@ -1,7 +1,5 @@
 #!/bin/bash
-
-# This script will run both the Celery worker and the Daphne web server.
-# The "&" symbol runs the first command in the background.
+export DJANGO_SETTINGS_MODULE=magictale.settings
 
 echo "Starting Celery worker..."
 celery -A magictale worker -l info &
