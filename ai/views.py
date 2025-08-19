@@ -14,8 +14,7 @@ from .serializers import (
     StoryProjectDetailSerializer,
 )
 from .engine import run_generation_async
-
-# === STEP 1: IMPORT THE REUSABLE PERMISSION CLASS ===
+from .tasks import run_generation_task # Make sure this import is here
 from authentication.permissions import HasActiveSubscription
 
 
@@ -94,3 +93,15 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
                 {"type": "progress", "event": {"progress": project.progress, "status": "canceled"}}
             )
         return Response({"detail": "Cancellation request sent."}, status=status.HTTP_200_OK)
+
+
+class StoryProjectViewSet(viewsets.ModelViewSet):
+    # ...
+    @action(detail=True, methods=["post"])
+    def start(self, request, pk=None):
+        # ... your existing logic to get the project and update its status ...
+        
+        # This is the line that sends the job to the background worker
+        run_generation_task.delay(project.id)
+        
+        return Response({"detail": "Story generation has started."}, status=status.HTTP_202_ACCEPTED)    
