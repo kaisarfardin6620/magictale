@@ -2,11 +2,16 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import HttpResponse
+
+def index(request):
+    return HttpResponse("Welcome to the MagicTale API!")
 
 urlpatterns = [
+    path('', index), # This line handles the root URL
     path('admin/', admin.site.urls),
     path('api/', include('authentication.urls')),
-    path("api/ai/", include("ai.urls")), 
+    path("api/ai/", include("ai.urls")),
     path("api/payments/", include("subscription.urls")),
     path("api/notification/", include("notification.urls")),
 ]
