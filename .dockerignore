@@ -1,0 +1,93 @@
+# Language-specific ignores
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+
+# Node.js (if any JS build artifacts)
+node_modules/
+npm-debug.log
+yarn-debug.log
+
+# Go (not detected, but safe to include)
+/vendor/
+*.test
+.go-cache/
+
+# Java (not detected, but safe to include)
+target/
+*.class
+.gradle/
+
+# Development artifacts
+.idea/
+.vscode/
+*.swp
+*.swo
+dist/
+build/
+out/
+test/
+tests/
+debug/
+*.log
+
+# Version control
+.git/
+.gitignore
+.svn/
+.hg/
+
+# Environment and secrets
+.env*
+*.env
+*.pem
+*.key
+*.crt
+config.local.*
+*.local.yml
+
+# Project-specific patterns
+# Documentation
+/docs/
+*.md
+README*
+
+# Docker files
+Dockerfile*
+docker-compose*
+
+# Temporary files
+/tmp/
+temp/
+*.tmp
+
+# Local development
+.local/
+local/
+
+# Python virtual environments
+.venv/
+venv/
+
+# Media files (if not needed in build)
+media/
+
+# Staticfiles (if collected at build time, ignore source)
+staticfiles/
+
+# Shell scripts (if not needed in build context)
+build.sh
+
+# Migration caches
+**/migrations/__pycache__/
+
+# Miscellaneous
+Procfile
+
+# Exclude compiled Python cache in all subfolders
+**/__pycache__/
+
+# Exclude migration cache in all subfolders
+**/migrations/__pycache__/
