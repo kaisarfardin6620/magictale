@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{{ project.child_name }}'s Story</title>
+    <style>
+        @page { size: A4; margin: 1.5cm; }
+        body { font-family: sans-serif; color: #333; }
+        .cover-page { text-align: center; page-break-after: always; }
+        .cover-page h1 { font-size: 40px; margin-bottom: 20px; }
+        .cover-page img { max-width: 80%; height: auto; border-radius: 10px; }
+        .story-page { margin-bottom: 20px; page-break-inside: avoid; }
+        .story-page img { width: 100%; height: auto; border-radius: 8px; margin-bottom: 10px; }
+        .story-page p { font-size: 16px; line-height: 1.6; text-align: justify; }
+    </style>
+</head>
+<body>
+    <div class="cover-page">
+        <h1>A Story for {{ project.child_name }}</h1>
+        <h2>Theme: {{ project.theme }}</h2>
+        {% if project.cover_image_url %}
+            <img src="{{ project.cover_image_url }}" alt="Cover Image">
+        {% endif %}
+    </div>
+    {% for page in pages %}
+    <div class="story-page">
+        <img src="{{ page.image_url }}" alt="Page {{ page.index }} illustration">
+        <p>{{ page.text }}</p>
+    </div>
+    {% endfor %}
+</body>
+</html>

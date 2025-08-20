@@ -22,17 +22,14 @@ class UserProfile(models.Model):
             )
         ]
     )
-
     email_verified = models.BooleanField(default=False)
     allow_push_notifications = models.BooleanField(default=True)
     parental_consent = models.BooleanField(default=False)
     accepted_terms = models.BooleanField(default=False)
-    
 
-    subscription_active = models.BooleanField(default=False)
+    # Note: All subscription-related fields have been removed from this model.
+    # The single source of truth for subscription data is now in the 'subscription' app.
 
-    trial_end_date = models.DateTimeField(blank=True, null=True)
-    external_subscription_id = models.CharField(max_length=100, blank=True, null=True, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -124,9 +121,7 @@ class UserActivityLog(models.Model):
 
 
 class OnboardingStatus(models.Model):
-    """
-    Tracks the progress of a user's onboarding process.
-    """
+    # This model remains the same, but its __str__ is improved.
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='onboarding_status')
     child_name = models.CharField(max_length=100, blank=True, null=True)
     age = models.PositiveIntegerField(blank=True, null=True)
@@ -136,4 +131,6 @@ class OnboardingStatus(models.Model):
     onboarding_complete = models.BooleanField(default=False)
 
     def __str__(self):
-        return f"{self.user.username}'s Onboarding Status"
+        if self.child_name:
+            return f"Hero Profile for '{self.child_name}' ({self.user.username})"
+        return f"{self.user.username}'s (empty) Hero Profile"

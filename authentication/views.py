@@ -11,6 +11,9 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 import uuid
 from django.core.mail import send_mail
+from .permissions import HasActiveSubscription
+from .models import OnboardingStatus
+from .serializers import OnboardingStatusSerializer
 
 from .models import AuthToken, UserProfile, PasswordHistory, UserActivityLog
 from .serializers import (
@@ -330,29 +333,23 @@ class EmailChangeConfirmAPIView(APIView):
 
 class OnboardingStatusView(APIView):
     """
-    API view for the user to get, create, or update their onboarding status.
-    This action requires an active subscription.
+    API view for the user to get, create, or update their hero profile.
+    Per client requirements, this action is only available to users
+    with an active subscription.
     """
-    # === FIX: Added the HasActiveSubscription permission class ===
     permission_classes = [IsAuthenticated, HasActiveSubscription]
 
     def get(self, request):
         """Retrieve the current user's onboarding status."""
-        try:
-            onboarding_status = OnboardingStatus.objects.get(user=request.user)
-            serializer = OnboardingStatusSerializer(onboarding_status)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except OnboardingStatus.DoesNotExist:
-            return Response(
-                {'detail': 'Onboarding not started yet.'}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
+        onboarding_status, created = OnboardingStatus.objects.get_or_create(user=request.user)
+        serializer = OnboardingStatusSerializer(onboarding_status)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request):
         """Create or update the current user's onboarding status."""
-        # We pass the request context to the serializer so it can access the user
-        serializer = OnboardingStatusSerializer(data=request.data, context={'request': request})
+        onboarding_status, created = OnboardingStatus.objects.get_or_create(user=request.user)
+        serializer = OnboardingStatusSerializer(onboarding_status, data=request.data, context={'request': request})
         if serializer.is_valid():
-            serializer.save() # The serializer's .create() or .update() method will be called
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

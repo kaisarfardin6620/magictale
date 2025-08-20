@@ -1,17 +1,18 @@
+# authentication/admin.py
+
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
 from .models import UserProfile, AuthToken, PasswordHistory, UserActivityLog, OnboardingStatus
 
-
+# This inline is now cleaner, as subscription data is handled by the 'subscription' app.
 class UserProfileInline(admin.StackedInline):
     model = UserProfile
     can_delete = False
     verbose_name_plural = 'Profile'
     fk_name = 'user'
     
-    # <-- UPDATED: Removed the entire 'Subscription Status' fieldset.
-    # That data is now handled by the 'subscription' app's admin.
+    # The fieldset no longer contains any subscription information.
     fieldsets = (
         (None, {
             'fields': (
@@ -21,12 +22,9 @@ class UserProfileInline(admin.StackedInline):
             )
         }),
     )
-    
-    # <-- UPDATED: Removed the old subscription fields from readonly_fields.
-    # Only 'email_verified' remains as it's system-managed.
     readonly_fields = ('email_verified',)
 
-
+# This CustomUserAdmin correctly includes the cleaned-up UserProfileInline.
 class CustomUserAdmin(BaseUserAdmin):
     inlines = (UserProfileInline,)
     list_display = ('id', 'username', 'email', 'first_name', 'last_name', 'is_active', 'is_staff')
@@ -37,14 +35,11 @@ class CustomUserAdmin(BaseUserAdmin):
             return list()
         return super().get_inline_instances(request, obj)
 
-
-# Unregister the default User model
+# Unregister the default User model and register our custom version
 admin.site.unregister(User)
-# Register the custom user admin
 admin.site.register(User, CustomUserAdmin)
 
-
-# (The rest of the file is correct and remains unchanged)
+# The rest of these admin classes from your original file are well-structured and remain.
 @admin.register(AuthToken)
 class AuthTokenAdmin(admin.ModelAdmin):
     list_display = ('user', 'token_type', 'short_token', 'created_at', 'expires_at', 'is_valid', 'is_used')
@@ -75,18 +70,6 @@ class UserActivityLogAdmin(admin.ModelAdmin):
 
 @admin.register(OnboardingStatus)
 class OnboardingStatusAdmin(admin.ModelAdmin):
-    """
-    Admin configuration for the OnboardingStatus model.
-    """
-    # === FIX THE TYPO IN THIS LIST ===
-    list_display = (
-        'user', 
-        'child_name', 
-        'age', 
-        'onboarding_complete', 
-        'favorite_animal'  # Changed from 'favourite_animal'
-    )
-    # ================================
-    
+    list_display = ('user', 'child_name', 'age', 'onboarding_complete', 'favorite_animal')
     list_filter = ('onboarding_complete', 'age')
     search_fields = ('user__username', 'child_name')
