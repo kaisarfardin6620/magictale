@@ -1,52 +1,15 @@
-version: '3.8'
+# docker-compose.yml
 
 services:
-  web:
-    build: .
-    command: daphne -b 0.0.0.0 -p 8001 magictale.asgi:application
-    ports:
-      - "8001:8001"
-    environment:
-      SECRET_KEY: ${SECRET_KEY}
-      RAILWAY_ENVIRONMENT: development
-      FRONTEND_URL: http://localhost:3000
-      REDIS_URL: redis://redis:6379/0
-      DATABASE_URL: ${DATABASE_URL}
-      EMAIL_HOST_USER: ${EMAIL_HOST_USER}
-      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD}
-      DEFAULT_FROM_EMAIL: ${EMAIL_HOST_USER}
-      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
-      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
-    volumes:
-      - .:/app
-    depends_on:
-      - redis
-
+  # ... redis and web services are correct ...
   worker:
     build: .
-    command: celery -A magictale worker -l info
-    environment:
-      SECRET_KEY: ${SECRET_KEY}
-      RAILWAY_ENVIRONMENT: development
-      REDIS_URL: redis://redis:6379/0
-      DATABASE_URL: ${DATABASE_URL}
-      EMAIL_HOST_USER: ${EMAIL_HOST_USER}
-      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD}
-      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL}
-      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
-      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+    # === THIS IS THE FIX ===
+    # The celery executable is in /usr/local/bin
+    command: /usr/local/bin/celery -A magictale worker -l info
     volumes:
-      - .:/app
+      - .:/home/appuser/app
+    env_file:
+      - .env
     depends_on:
       - redis
-
-  redis:
-    image: redis:alpine
-    ports:
-      - "6379:6379"

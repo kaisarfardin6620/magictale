@@ -9,5 +9,5 @@ router.register(r"subscriptions", SubscriptionViewSet, basename="subscriptions")
 
 urlpatterns = [
     path("", include(router.urls)),
-    path("webhook/", stripe_webhook, name="stripe-webhook"),
+    path("webhooks/stripe/", stripe_webhook, name="stripe-webhook"), 
 ]

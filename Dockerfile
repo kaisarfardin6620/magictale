@@ -1,52 +1,65 @@
 # Dockerfile
 
-# Use an official Python image. 'slim-bookworm' is a modern, minimal Debian-based image.
-FROM python:3.11-slim-bookworm
+# --- Stage 1: The "Builder" Stage ---
+FROM python:3.11-slim-bookworm AS builder
 
-# Set environment variables for a clean Python environment
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# --- System Dependencies ---
-# Install libraries required by Python packages like WeasyPrint
+# Install system dependencies for WeasyPrint
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpango-1.0-0 \
     libpangoft2-1.0-0 \
     libharfbuzz0b \
-    gir1.2-gobject-2.0 \
-    libcairo2 \
-    libgdk-pixbuf2.0-0 \
-    libffi-dev \
+    libgirepository1.0-dev \
+    gcc \
+    pkg-config \
+    libcairo2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Set the working directory inside the container
 WORKDIR /app
 
-# --- Python Package Installation ---
-# Copy and install requirements first to leverage Docker's layer caching
+# Install Python packages
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# --- Application Code ---
-# Copy the rest of your application code
+# Copy application code
 COPY . .
 
-# --- Django-Specific Deployment Steps ---
-# This command finds all static files from your apps and collects them
-# into the STATIC_ROOT directory (/app/staticfiles) for WhiteNoise to serve.
-# This fixes the "No directory at: /app/staticfiles/" warning.
-RUN python manage.py collectstatic --noinput
+# Securely run collectstatic with a dummy key
+RUN SECRET_KEY="dummy-key-for-collectstatic" python manage.py collectstatic --noinput
 
-# --- Port Configuration ---
-# Expose a default port. Railway will override this, but it's good practice.
-EXPOSE 8001
 
-# --- Final Startup Command ---
-# This is the key to making it work everywhere.
-# 1. 'sh -c "..."' allows us to run multiple commands.
-# 2. 'python manage.py migrate' runs database migrations on every startup.
-# 3. 'daphne ... -p ${PORT:-8001}' starts the server.
-#    - On Railway, it uses the PORT variable provided by the platform (e.g., 8080).
-#    - Locally, if PORT is not set, it defaults to 8001.
-CMD ["sh", "-c", "python manage.py migrate && daphne -b 0.0.0.0 -p ${PORT:-8001} magictale.asgi:application"]
+# --- Stage 2: The Final Production Image ---
+FROM python:3.11-slim-bookworm AS final
+
+# Create a non-root user
+RUN useradd --create-home --shell /bin/bash appuser
+WORKDIR /home/appuser/app
+
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libharfbuzz0b \
+    libgirepository1.0-dev \
+    libcairo2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed packages and static files from the builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /app/staticfiles /home/appuser/app/staticfiles
+
+# Copy application code
+COPY . .
+
+# Change ownership
+RUN chown -R appuser:appuser /home/appuser
+
+USER appuser
+
+EXPOSE 8000
+
+# Default command for production
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "magictale.asgi:application"]
