@@ -25,15 +25,35 @@ class StoryProjectCreateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id"]
 
+    def validate(self, data):
+        """
+        Enforce subscription limits: only 'master' plan or trial users
+        can create 'long' stories.
+        """
+        if data.get("length") == "long":
+            user = self.context["request"].user
+            subscription = getattr(user, 'subscription', None)
+
+            if not subscription:
+                raise serializers.ValidationError({"length": "A subscription is required to create long stories."})
+
+            is_master_plan = subscription.plan == 'master'
+            is_trialing = subscription.status == 'trialing'
+
+            if not (is_trialing or is_master_plan):
+                raise serializers.ValidationError({"length": "You must upgrade to the Story Master plan to create long stories."})
+
+        return data
+
     def create(self, validated_data):
         user = self.context["request"].user
         hero_data = validated_data.pop('hero')
-        
+
         onboarding_profile, _ = OnboardingStatus.objects.get_or_create(user=user)
         for attr, value in hero_data.items():
             setattr(onboarding_profile, attr, value)
         onboarding_profile.save()
-        
+
         story_project = StoryProject.objects.create(
             user=user,
             onboarding=onboarding_profile,
@@ -48,7 +68,7 @@ class StoryProjectCreateSerializer(serializers.ModelSerializer):
 
 class StoryProjectDetailSerializer(serializers.ModelSerializer):
     pages = StoryPageSerializer(many=True, read_only=True)
-    
+
     class Meta:
         model = StoryProject
         fields = [

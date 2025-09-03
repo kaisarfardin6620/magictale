@@ -1,4 +1,4 @@
-# your_project/settings.py
+# magictale/settings.py
 
 from pathlib import Path
 from datetime import timedelta
@@ -7,6 +7,7 @@ import json
 import firebase_admin
 from firebase_admin import credentials
 from dotenv import load_dotenv
+import dj_database_url
 
 # Load environment variables from a .env file
 load_dotenv()
@@ -15,42 +16,24 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # --- Core Security Settings ---
-
 SECRET_KEY = os.getenv('SECRET_KEY')
 if not SECRET_KEY:
-    raise ValueError("SECRET_KEY must be set in the .env file")
+    raise ValueError("A SECRET_KEY must be set in the .env file")
 
-# DEBUG is True for local development
-DEBUG = True
+# DEBUG is controlled by the .env file
+DEBUG = os.getenv('DJANGO_DEBUG', 'False') == 'True'
 
 # --- Host and CORS Configuration ---
+# This section is now simplified for a proxy setup like Nginx
+ALLOWED_HOSTS_STR = os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1')
+ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_STR.split(',')]
 
-# Get the Ngrok hostname from your .env file
-NGROK_HOSTNAME = os.getenv('NGROK_HOSTNAME')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
 
-# Default allowed hosts for local development
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
-if NGROK_HOSTNAME:
-    print(f"Ngrok development mode enabled for host: {NGROK_HOSTNAME}")
-    ALLOWED_HOSTS.append(NGROK_HOSTNAME)
-
-# Trust the Ngrok domain for CSRF POST requests
-CSRF_TRUSTED_ORIGINS = []
-if NGROK_HOSTNAME:
-    # CSRF_TRUSTED_ORIGINS requires the 'https://' scheme
-    CSRF_TRUSTED_ORIGINS.append(f'https://{NGROK_HOSTNAME}')
-
-# Allow your frontend and Ngrok to make cross-origin requests
-CORS_ALLOWED_ORIGINS = [
-    os.getenv('FRONTEND_URL', 'http://localhost:3000'),
-]
-if NGROK_HOSTNAME:
-    # CORS_ALLOWED_ORIGINS also requires the 'https://' scheme
-    CORS_ALLOWED_ORIGINS.append(f'https://{NGROK_HOSTNAME}')
-
+CORS_ALLOWED_ORIGINS = [FRONTEND_URL]
+CSRF_TRUSTED_ORIGINS = [FRONTEND_URL]
 
 # --- Application Definition ---
-
 INSTALLED_APPS = [
     'daphne',
     'django.contrib.admin',
@@ -66,7 +49,6 @@ INSTALLED_APPS = [
     'corsheaders',
     'authentication',
     'ai',
-    'notification',
     'subscription',
 ]
 
@@ -74,7 +56,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware', # Should be high up
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -99,12 +81,12 @@ TEMPLATES = [
 ]
 ASGI_APPLICATION = 'magictale.asgi.application'
 
-# --- Database Configuration (Using SQLite3 for local development) ---
+# --- Database Configuration ---
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default=f'sqlite:///{BASE_DIR / "db.sqlite3"}',
+        conn_max_age=600
+    )
 }
 
 # --- Password validation ---
@@ -144,12 +126,12 @@ SIMPLE_JWT = {
 
 # --- Email Settings ---
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
+EMAIL_HOST = os.getenv('EMAIL_HOST')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL')
 
 # --- Third-Party API Keys ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -164,7 +146,6 @@ if REDIS_URL:
     CELERY_BROKER_URL = REDIS_URL
     CELERY_RESULT_BACKEND = REDIS_URL
 else:
-    # Fallback for local dev without Docker/Redis running
     CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
     CELERY_BROKER_URL = 'memory://'
     CELERY_RESULT_BACKEND = 'django-db'
@@ -187,10 +168,18 @@ try:
             cred = credentials.Certificate(cred_path)
         else:
             cred = None
-            print("WARNING: Firebase credentials not found.")
 
     if cred and not firebase_admin._apps:
         firebase_admin.initialize_app(cred)
-        print("Firebase Admin SDK initialized successfully.")
 except Exception as e:
-    print(f"CRITICAL ERROR: Could not initialize Firebase Admin SDK: {e}")
+    print(f"WARNING: Could not initialize Firebase Admin SDK: {e}")
+
+# --- AI GENERATION OPTIONS (for Feature Gating) ---
+ART_STYLES = {
+    "basic": ["Watercolor", "Cartoon", "Anime", "Fantasy", "Sci-Fi"],
+    "premium": ["Vintage", "Impressionist", "Surrealist", "Steampunk"]
+}
+NARRATOR_VOICES = {
+    "basic": ["alloy", "echo", "fable"],
+    "premium": ["onyx", "nova", "shimmer"]
+}

@@ -4,10 +4,11 @@ from django.http import HttpResponse
 from django.template.loader import render_to_string
 from django.db import transaction
 from django.utils import timezone
+from django.conf import settings
 from rest_framework.decorators import action
 from rest_framework.response import Response
-# This is the line we are fixing. Note 'permissions' is now imported.
 from rest_framework import viewsets, permissions, status
+from rest_framework.views import APIView
 from weasyprint import HTML
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -19,15 +20,15 @@ from .serializers import (
     GalleryStorySerializer,
 )
 from .tasks import run_generation_task
-# This import is correct, assuming IsOwner is in authentication/permissions.py
-from authentication.permissions import HasActiveSubscription, IsOwner
+from authentication.permissions import (
+    HasActiveSubscription,
+    IsOwner,
+    IsStoryMaster,
+)
 
 class StoryProjectViewSet(viewsets.ModelViewSet):
     queryset = StoryProject.objects.all()
     serializer_class = StoryProjectDetailSerializer
-    
-    # This is the line that was causing the error.
-    # It is now fixed by using 'permissions.IsAuthenticated'.
     permission_classes = [permissions.IsAuthenticated, IsOwner, HasActiveSubscription]
 
     def get_queryset(self):
@@ -61,7 +62,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
             project.save(update_fields=["status"])
             layer = get_channel_layer()
             async_to_sync(layer.group_send)(
-                f"story_{project.id}", 
+                f"story_{project.id}",
                 {"type": "progress", "event": {"progress": project.progress, "status": "canceled"}}
             )
         return Response({"detail": "Cancellation request processed."}, status=status.HTTP_200_OK)
@@ -75,7 +76,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         project.save(update_fields=['is_saved'])
         return Response({"detail": "Story successfully saved to your library."}, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['get'], url_path='download-pdf')
+    @action(detail=True, methods=['get'], url_path='download-pdf', permission_classes=[IsStoryMaster])
     def download_pdf(self, request, pk=None):
         project = self.get_object()
         if project.status != StoryProject.Status.DONE:
@@ -91,5 +92,32 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
 class GalleryStoryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = GalleryStory.objects.all()
     serializer_class = GalleryStorySerializer
-    # This line is also now correct because of the import fix.
-    permission_classes = [permissions.IsAuthenticated]
+    # Protect the gallery so only master tier users can see it in the future
+    permission_classes = [permissions.IsAuthenticated, IsStoryMaster]
+
+class GenerationOptionsView(APIView):
+    """
+    Provides the lists of available art styles and narrator voices
+    based on the user's current subscription plan.
+    """
+    permission_classes = [permissions.IsAuthenticated, HasActiveSubscription]
+
+    def get(self, request, *args, **kwargs):
+        user = request.user
+        subscription = getattr(user, 'subscription', None)
+
+        is_master_tier = False
+        if subscription and (subscription.status == 'trialing' or subscription.plan == 'master'):
+            is_master_tier = True
+
+        if is_master_tier:
+            styles = settings.ART_STYLES['basic'] + settings.ART_STYLES['premium']
+            voices = settings.NARRATOR_VOICES['basic'] + settings.NARRATOR_VOICES['premium']
+        else:
+            styles = settings.ART_STYLES['basic']
+            voices = settings.NARRATOR_VOICES['basic']
+
+        return Response({
+            "art_styles": styles,
+            "narrator_voices": voices
+        }, status=status.HTTP_200_OK)

@@ -13,7 +13,6 @@ urlpatterns = [
     path('api/', include('authentication.urls')),
     path("api/ai/", include("ai.urls")),
     path("api/payments/", include("subscription.urls")),
-    path("api/notification/", include("notification.urls")),
 ]
 
 

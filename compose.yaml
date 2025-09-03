@@ -1,15 +1,76 @@
-# docker-compose.yml
+version: '3.8'
 
 services:
-  # ... redis and web services are correct ...
-  worker:
-    build: .
-    # === THIS IS THE FIX ===
-    # The celery executable is in /usr/local/bin
-    command: /usr/local/bin/celery -A magictale worker -l info
+  python-app:
+    build:
+      context: .
+    container_name: python-app
+    restart: unless-stopped
+    init: true
+    env_file: ./.env
+    # The entrypoint script will run before the main command
+    entrypoint: /app/docker-entrypoint.sh
+    # The main command is now passed to the entrypoint script
+    command: ["daphne", "-b", "0.0.0.0", "-p", "8000", "magictale.asgi:application"]
     volumes:
-      - .:/home/appuser/app
-    env_file:
-      - .env
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
     depends_on:
-      - redis
+      - postgres-db
+      - redis-cache
+    networks:
+      - backend
+
+  nginx:
+    build: ./nginx
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      # Expose Nginx on port 8080 of your host machine
+      - "8080:80"
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    depends_on:
+      - python-app
+    networks:
+      - backend
+
+  postgres-db:
+    image: postgres:latest
+    container_name: postgres-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-magictale}
+      POSTGRES_USER: ${POSTGRES_USER:-magictale}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-magictale}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-magictale}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+  redis-cache:
+    image: redis:latest
+    container_name: redis-cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:
+
+networks:
+  backend:
+    driver: bridge
