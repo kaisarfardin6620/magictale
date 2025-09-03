@@ -1,7 +1,7 @@
 # ai/serializers.py
 
 from rest_framework import serializers
-from .models import StoryProject, StoryPage, GalleryStory
+from .models import StoryProject, StoryPage # <-- GalleryStory removed
 from authentication.models import OnboardingStatus
 
 class StoryPageSerializer(serializers.ModelSerializer):
@@ -24,26 +24,6 @@ class StoryProjectCreateSerializer(serializers.ModelSerializer):
             "voice", "length", "difficulty", "model_used"
         ]
         read_only_fields = ["id"]
-
-    def validate(self, data):
-        """
-        Enforce subscription limits: only 'master' plan or trial users
-        can create 'long' stories.
-        """
-        if data.get("length") == "long":
-            user = self.context["request"].user
-            subscription = getattr(user, 'subscription', None)
-
-            if not subscription:
-                raise serializers.ValidationError({"length": "A subscription is required to create long stories."})
-
-            is_master_plan = subscription.plan == 'master'
-            is_trialing = subscription.status == 'trialing'
-
-            if not (is_trialing or is_master_plan):
-                raise serializers.ValidationError({"length": "You must upgrade to the Story Master plan to create long stories."})
-
-        return data
 
     def create(self, validated_data):
         user = self.context["request"].user
@@ -80,7 +60,4 @@ class StoryProjectDetailSerializer(serializers.ModelSerializer):
             "created_at", "started_at", "finished_at", "pages"
         ]
 
-class GalleryStorySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = GalleryStory
-        fields = ['id', 'title', 'creator_name', 'synopsis', 'cover_image_url', 'is_premium']
+# The GalleryStorySerializer has been removed.

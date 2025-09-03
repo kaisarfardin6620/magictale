@@ -8,15 +8,14 @@ def index(request):
     return HttpResponse("Welcome to the MagicTale API!")
 
 urlpatterns = [
-    path('', index), # This line handles the root URL
+    path('', index),
     path('admin/', admin.site.urls),
-    path('api/', include('authentication.urls')),
+    path('api/auth/', include('authentication.urls')),
     path("api/ai/", include("ai.urls")),
-    path("api/payments/", include("subscription.urls")),
+    path("api/subscriptions/", include("subscription.urls")),
+    path("api/support/", include("support.urls")),
 ]
 
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-
-    

@@ -1,4 +1,4 @@
-# views.py
+# authentication/views.py
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.contrib.auth.hashers import check_password
@@ -21,7 +21,7 @@ from .serializers import (
     ChangePasswordSerializer, ProfileSerializer, UpdateProfileSerializer,
     ProfilePictureSerializer, EmailChangeRequestSerializer, ResendVerificationSerializer,
     MyTokenObtainPairSerializer, UserActivityLogSerializer, FullNameUpdateSerializer,
-    EmailChangeConfirmSerializer
+    EmailChangeConfirmSerializer,LanguagePreferenceSerializer
 )
 from .models import OnboardingStatus
 from .serializers import OnboardingStatusSerializer
@@ -172,7 +172,7 @@ class PasswordResetConfirmAPIView(APIView):
         serializer = PasswordResetConfirmSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
+
         reset_id = serializer.validated_data['reset_id']
         new_password = serializer.validated_data['new_password']
 
@@ -307,13 +307,15 @@ class EmailChangeRequestAPIView(APIView):
                 status=status.HTTP_200_OK
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 class EmailChangeConfirmAPIView(APIView):
     permission_classes = [AllowAny]
     def get(self, request):
-        token_value = request.query_params.get('token')
-        if not token_value:
-            return Response({'error': 'Token is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = EmailChangeConfirmSerializer(data=request.query_params)
+        if not serializer.is_valid():
+            return Response({'error': 'A valid token is required in the URL.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        token_value = serializer.validated_data.get('token')
+        
         try:
             token = AuthToken.objects.get(token=token_value, token_type='email_change', is_used=False)
             if not token.is_valid():
@@ -329,26 +331,32 @@ class EmailChangeConfirmAPIView(APIView):
             return Response({'message': 'Your email has been changed successfully.'}, status=status.HTTP_200_OK)
         except AuthToken.DoesNotExist:
             return Response({'error': 'Invalid or expired token.'}, status=status.HTTP_400_BAD_REQUEST)
-
-
 class OnboardingStatusView(APIView):
-    """
-    API view for the user to get, create, or update their hero profile.
-    Per client requirements, this action is only available to users
-    with an active subscription.
-    """
     permission_classes = [IsAuthenticated, HasActiveSubscription]
 
     def get(self, request):
-        """Retrieve the current user's onboarding status."""
         onboarding_status, created = OnboardingStatus.objects.get_or_create(user=request.user)
         serializer = OnboardingStatusSerializer(onboarding_status)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request):
-        """Create or update the current user's onboarding status."""
         onboarding_status, created = OnboardingStatus.objects.get_or_create(user=request.user)
         serializer = OnboardingStatusSerializer(onboarding_status, data=request.data, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+class LanguagePreferenceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        profile = request.user.profile
+        serializer = LanguagePreferenceSerializer(profile)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def put(self, request):
+        profile = request.user.profile
+        serializer = LanguagePreferenceSerializer(profile, data=request.data)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)

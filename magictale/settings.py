@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'authentication',
     'ai',
     'subscription',
+    'support',
 ]
 
 MIDDLEWARE = [

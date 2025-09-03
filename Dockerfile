@@ -1,30 +1,31 @@
 # syntax=docker/dockerfile:1
 
-# --- Base image ---
-FROM python:3.11-slim AS base
+# --- Stage 1: Builder ---
+# This stage installs build-time dependencies and our Python packages into a virtual environment.
+FROM python:3.11-slim AS builder
 
-# --- Builder stage ---
-# This stage installs build-time dependencies and Python packages
-FROM base AS builder
 WORKDIR /app
 
-# Install only the dependencies needed to BUILD python packages
+# Install system packages needed to build Python libraries (like psycopg2)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy and install Python requirements
+# Copy and install Python requirements, using a cache for speed
 COPY --link requirements.txt ./
 RUN python -m venv .venv \
     && .venv/bin/pip install --upgrade pip
 RUN --mount=type=cache,target=/root/.cache/pip .venv/bin/pip install -r requirements.txt
 
-# --- Final stage ---
-# This stage creates the final, lean image for running the application
-FROM base AS final
 
-# Install only the RUNTIME dependencies
+# --- Stage 2: Final Image ---
+# This stage builds the final, lean image for running the application.
+FROM python:3.11-slim AS final
+
+# Install only the system packages needed at RUNTIME
+# - postgresql-client: for the entrypoint script to run pg_isready
+# - pango/gobject: for WeasyPrint to generate PDFs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
     libpango-1.0-0 \
@@ -32,35 +33,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgobject-2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Security: create non-root user
+# Create a secure, non-root user to run the application
 RUN useradd -m -u 1000 appuser
 
 WORKDIR /app
 
-# Copy application code
+# Copy the application code and the virtual environment from the builder stage
 COPY --link . .
-
-# Copy the virtual environment from the builder stage
 COPY --from=builder /app/.venv /app/.venv
 
-# === THIS IS THE FIX ===
-# Create the directories for static and media files, then change their ownership
-# to the non-root user. This must be done BEFORE switching to the user.
-RUN mkdir -p /app/staticfiles /app/media \
-    && chown -R appuser:appuser /app/staticfiles /app/media
-# === END OF FIX ===
+# Create directories for static and media files
+RUN mkdir -p /app/staticfiles /app/media
 
-# Set user
+# Change ownership of the entire application directory to the non-root user.
+# This is the CRITICAL step that fixes the permission errors.
+RUN chown -R appuser:appuser /app
+
+# Switch to the non-root user
 USER appuser
 
-# Set PATH to use the venv
+# Add the virtual environment's bin to the PATH
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Expose Daphne port
+# Expose the port the app runs on
 EXPOSE 8000
 
-# Healthcheck
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD curl -f http://localhost:8000/ || exit 1
-
-# Default command (will be overridden by docker-compose's entrypoint)
+# Default command to run the server (will be overridden by docker-compose)
 CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "magictale.asgi:application"]

@@ -22,13 +22,12 @@ class UserProfile(models.Model):
             )
         ]
     )
+
+    language = models.CharField(max_length=10, default='en', blank=True)
     email_verified = models.BooleanField(default=False)
     allow_push_notifications = models.BooleanField(default=True)
     parental_consent = models.BooleanField(default=False)
     accepted_terms = models.BooleanField(default=False)
-
-    # Note: All subscription-related fields have been removed from this model.
-    # The single source of truth for subscription data is now in the 'subscription' app.
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -38,9 +37,6 @@ class UserProfile(models.Model):
 
 
 class AuthToken(models.Model):
-    """
-    A model to handle various authentication tokens (e.g., signup, 2FA, password reset).
-    """
     TOKEN_TYPES = (
         ('signup', 'Signup Verification'),
         ('2fa', 'Two-Factor Authentication'),
@@ -63,9 +59,6 @@ class AuthToken(models.Model):
         return f"{self.user.username} - {self.token_type} Token"
 
     def save(self, *args, **kwargs):
-        """
-        Sets the expiration time for the token based on its type.
-        """
         if not self.expires_at:
             if self.token_type in ['signup', 'email_verification', 'reactivation']:
                 self.expires_at = timezone.now() + timezone.timedelta(hours=24)
@@ -78,16 +71,10 @@ class AuthToken(models.Model):
         super().save(*args, **kwargs)
 
     def is_valid(self):
-        """
-        Checks if the token is valid (not used and not expired).
-        """
         return not self.is_used and self.expires_at > timezone.now()
 
 
 class PasswordHistory(models.Model):
-    """
-    Stores a hash of the user's previous passwords to prevent reuse.
-    """
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='password_histories')
     password_hash = models.CharField(max_length=128)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -106,9 +93,6 @@ class PasswordHistory(models.Model):
 
 
 class UserActivityLog(models.Model):
-    """
-    Logs user activities for auditing and security purposes.
-    """
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='activity_logs')
     activity_type = models.CharField(max_length=100)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
@@ -121,7 +105,6 @@ class UserActivityLog(models.Model):
 
 
 class OnboardingStatus(models.Model):
-    # This model remains the same, but its __str__ is improved.
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='onboarding_status')
     child_name = models.CharField(max_length=100, blank=True, null=True)
     age = models.PositiveIntegerField(blank=True, null=True)

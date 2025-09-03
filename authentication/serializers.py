@@ -1,4 +1,3 @@
-# serializers.py
 import re
 import hashlib
 import requests
@@ -15,7 +14,6 @@ from .models import OnboardingStatus
 class PasswordValidator:
     @staticmethod
     def validate_breached_password(password):
-        """Check password against Have I Been Pwned database"""
         sha1 = hashlib.sha1(password.encode()).hexdigest().upper()
         prefix, suffix = sha1[:5], sha1[5:]
         try:
@@ -29,7 +27,6 @@ class PasswordValidator:
 
     @staticmethod
     def validate_password_strength(password):
-        """Enforce strong password policy"""
         if len(password) < 10:
             raise serializers.ValidationError("Password must be at least 10 characters long.")
         if not re.search(r"[A-Z]", password):
@@ -45,7 +42,7 @@ class PasswordValidator:
 class SignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, validators=[PasswordValidator.validate_password_strength])
     email = serializers.EmailField(required=True)
-    
+
     class Meta:
         model = User
         fields = ['username', 'email', 'password']
@@ -57,13 +54,13 @@ class SignupSerializer(serializers.ModelSerializer):
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError("This email is already in use.")
         return value
-        
+
     def create(self, validated_data):
         user = User.objects.create_user(
             username=validated_data['username'],
             email=validated_data['email'],
             password=validated_data['password'],
-            is_active=False # User is inactive until email is verified
+            is_active=False
         )
         UserProfile.objects.create(user=user)
         return user
@@ -77,39 +74,23 @@ class PasswordResetRequestSerializer(serializers.Serializer):
             return value
         return value
 
-# ===================================================================
-# == THIS SERIALIZER IS NOW FIXED ===================================
-# ===================================================================
+
 class PasswordResetConfirmSerializer(serializers.Serializer):
-    """
-    Serializer for the final step of password reset.
-    It now expects 'reset_id', 'new_password', and 'confirm_password'.
-    """
-    # 1. Renamed 'token' to 'reset_id' to match the view's expectation.
     reset_id = serializers.UUIDField(required=True)
-    
-    # 2. Added password strength validation directly to the field.
     new_password = serializers.CharField(
         write_only=True,
         required=True,
         validators=[PasswordValidator.validate_password_strength, PasswordValidator.validate_breached_password]
     )
-    
-    # 3. Added 'confirm_password' so the serializer can validate that the passwords match.
     confirm_password = serializers.CharField(
         write_only=True,
         required=True
     )
 
     def validate(self, data):
-        # 4. The validation logic is now simple: just check if the passwords match.
-        #    The view will handle checking the token and the old password.
         if data['new_password'] != data['confirm_password']:
             raise serializers.ValidationError("The two password fields didn't match.")
         return data
-# ===================================================================
-# == END OF CHANGES =================================================
-# ===================================================================
 
 
 class ChangePasswordSerializer(serializers.Serializer):
@@ -131,7 +112,7 @@ class ChangePasswordSerializer(serializers.Serializer):
         user = self.context['request'].user
         if check_password(data['new_password'], user.password):
             raise serializers.ValidationError("New password cannot be the same as the old password.")
-        
+
         password_histories = PasswordHistory.objects.filter(user=user).order_by('-created_at')[:10]
         for history in password_histories:
             if check_password(data['new_password'], history.password_hash):
@@ -145,7 +126,7 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         token = super().get_token(user)
         token['username'] = user.username
         try:
-            subscription = user.subscription 
+            subscription = user.subscription
             token['plan'] = subscription.plan
             token['subscription_status'] = subscription.status
         except AttributeError:
@@ -155,16 +136,17 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 
 class ProfileSerializer(serializers.ModelSerializer):
-    # These fields will now call a 'get_...' method to find their data.
     subscription_active = serializers.SerializerMethodField()
     current_plan = serializers.SerializerMethodField()
     trial_end_date = serializers.SerializerMethodField()
-    
+    language = serializers.CharField() # <-- ADD THIS LINE
+
     class Meta:
         model = UserProfile
         fields = [
-            'profile_picture', 
-            'phone_number', 
+            'profile_picture',
+            'phone_number',
+            'language', 
             'allow_push_notifications',
             'subscription_active',
             'current_plan',
@@ -172,16 +154,13 @@ class ProfileSerializer(serializers.ModelSerializer):
         ]
 
     def get_subscription_active(self, obj):
-        # 'obj' is the UserProfile instance. We get the user from it.
         try:
-            # Check if the subscription status is 'active' or 'trialing'
             return obj.user.subscription.status in ['active', 'trialing']
         except Subscription.DoesNotExist:
             return False
 
     def get_current_plan(self, obj):
         try:
-            # We use get_plan_display() to get the human-readable plan name
             return obj.user.subscription.get_plan_display()
         except Subscription.DoesNotExist:
             return None
@@ -196,7 +175,7 @@ class ProfileSerializer(serializers.ModelSerializer):
 class UpdateProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
-        fields = [ 'phone_number']
+        fields = ['phone_number']
 
 
 class ProfilePictureSerializer(serializers.ModelSerializer):
@@ -234,31 +213,28 @@ class FullNameUpdateSerializer(serializers.ModelSerializer):
         fields = ['first_name', 'last_name']
 
 
-
 class OnboardingStatusSerializer(serializers.ModelSerializer):
-    """
-    Serializer for creating and updating the user's onboarding information.
-    """
     class Meta:
         model = OnboardingStatus
-        # List all the fields the user can fill out
         fields = [
             'id', 'child_name', 'age', 'pronouns', 'favorite_animal',
             'favorite_color', 'onboarding_complete'
         ]
-        # The ID is assigned by the database, so it should be read-only
         read_only_fields = ['id']
 
     def create(self, validated_data):
-        """
-        Ensure that a user can only have one onboarding status record.
-        This uses update_or_create to either create a new record or update
-        the existing one for the current user.
-        """
         user = self.context['request'].user
-        # This is a robust way to handle the one-to-one relationship via an API
         onboarding_status, created = OnboardingStatus.objects.update_or_create(
             user=user,
             defaults=validated_data
         )
-        return onboarding_status        
+        return onboarding_status
+class LanguagePreferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = ['language']
+
+    def validate_language(self, value):
+        if len(value) > 10:
+             raise serializers.ValidationError("Language code is too long.")
+        return value

@@ -4,9 +4,9 @@ from .views import (
     EmailVerificationAPIView,
     ResendVerificationEmailAPIView,
     MyTokenObtainPairView,
-    
-    PasswordResetInitiateAPIView,   # Renamed from PasswordResetRequestAPIView
-    PasswordResetVerifyAPIView,     # The new verification step
+
+    PasswordResetInitiateAPIView,
+    PasswordResetVerifyAPIView,
     PasswordResetConfirmAPIView,
 
     ChangePasswordAPIView,
@@ -18,6 +18,7 @@ from .views import (
     EmailChangeRequestAPIView,
     EmailChangeConfirmAPIView,
     OnboardingStatusView,
+    LanguagePreferenceView,
 )
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -32,7 +33,7 @@ urlpatterns = [
     path('password-reset/', PasswordResetInitiateAPIView.as_view(), name='password_reset_initiate'),
     path('password-reset/verify/', PasswordResetVerifyAPIView.as_view(), name='password_reset_verify'),
     path('password-reset/confirm/', PasswordResetConfirmAPIView.as_view(), name='password_reset_confirm'),
-    
+
     path('profile/', ProfileView.as_view(), name='profile'),
     path('profile/full-name/', FullNameUpdateAPIView.as_view(), name='update_full_name'),
     path('profile/picture/', ProfilePictureView.as_view(), name='profile_picture'),
@@ -42,4 +43,5 @@ urlpatterns = [
     path('email-change/', EmailChangeRequestAPIView.as_view(), name='email_change_request'),
     path('email-change/confirm/', EmailChangeConfirmAPIView.as_view(), name='email_change_confirm'),
     path('onboarding/', OnboardingStatusView.as_view(), name='onboarding_status'),
+    path('profile/language/', LanguagePreferenceView.as_view(), name='language-preference'),
 ]
