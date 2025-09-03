@@ -12,11 +12,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy and install Python requirements, using a cache for speed
+# Copy and install Python requirements
 COPY --link requirements.txt ./
 RUN python -m venv .venv \
     && .venv/bin/pip install --upgrade pip
-RUN --mount=type=cache,target=/root/.cache/pip .venv/bin/pip install -r requirements.txt
+
+# === THIS IS THE FIX ===
+# Added 'id=pip-cache,' to the mount instruction to make it compatible with Railway.
+RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip .venv/bin/pip install -r requirements.txt
+# === END OF FIX ===
 
 
 # --- Stage 2: Final Image ---
@@ -24,8 +28,6 @@ RUN --mount=type=cache,target=/root/.cache/pip .venv/bin/pip install -r requirem
 FROM python:3.11-slim AS final
 
 # Install only the system packages needed at RUNTIME
-# - postgresql-client: for the entrypoint script to run pg_isready
-# - pango/gobject: for WeasyPrint to generate PDFs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
     libpango-1.0-0 \
@@ -46,7 +48,6 @@ COPY --from=builder /app/.venv /app/.venv
 RUN mkdir -p /app/staticfiles /app/media
 
 # Change ownership of the entire application directory to the non-root user.
-# This is the CRITICAL step that fixes the permission errors.
 RUN chown -R appuser:appuser /app
 
 # Switch to the non-root user
@@ -58,5 +59,5 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Expose the port the app runs on
 EXPOSE 8000
 
-# Default command to run the server (will be overridden by docker-compose)
+# Default command to run the server (will be overridden by Railway's start command)
 CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "magictale.asgi:application"]
