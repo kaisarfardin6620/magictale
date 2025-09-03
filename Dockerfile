@@ -18,8 +18,9 @@ RUN python -m venv .venv \
     && .venv/bin/pip install --upgrade pip
 
 # === THIS IS THE FIX ===
-# Added 'id=pip-cache,' to the mount instruction to make it compatible with Railway.
-RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip .venv/bin/pip install -r requirements.txt
+# The problematic --mount command has been removed. We are now using a standard RUN command.
+# Railway's builder will automatically cache this layer.
+RUN .venv/bin/pip install -r requirements.txt
 # === END OF FIX ===
 
 
@@ -59,5 +60,5 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Expose the port the app runs on
 EXPOSE 8000
 
-# Default command to run the server (will be overridden by Railway's start command)
+# Default command to run the server (will be overridden by Railway)
 CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "magictale.asgi:application"]
