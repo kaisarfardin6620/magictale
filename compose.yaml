@@ -22,13 +22,13 @@ services:
       - backend
 
   nginx:
-    build: ./nginx
+    image: nginx:alpine
     container_name: nginx
     restart: unless-stopped
     ports:
-      # Expose Nginx on port 8080 of your host machine
       - "8080:80"
     volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - static_volume:/app/staticfiles
       - media_volume:/app/media
     depends_on:

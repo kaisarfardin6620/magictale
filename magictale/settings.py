@@ -113,7 +113,11 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': ('rest_framework_simplejwt.authentication.JWTAuthentication',),
     'DEFAULT_THROTTLE_CLASSES': ['rest_framework.throttling.AnonRateThrottle', 'rest_framework.throttling.UserRateThrottle'],
-    'DEFAULT_THROTTLE_RATES': {'anon': '100/day', 'user': '1000/day'}
+    'DEFAULT_THROTTLE_RATES': {'anon': '100/day', 'user': '1000/day'},
+    'DEFAULT_RENDERER_CLASSES': [
+        'magictale.api.renderers.CustomJSONRenderer',
+    ],
+    'EXCEPTION_HANDLER': 'magictale.api.exceptions.custom_exception_handler'
 }
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),

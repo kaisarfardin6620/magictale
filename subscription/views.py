@@ -1,6 +1,6 @@
 import stripe
 from django.conf import settings
-import os 
+import os
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -13,6 +13,7 @@ PRICE_IDS = {
     "creator": os.getenv("STRIPE_CREATOR_PRICE_ID"),
     "master": os.getenv("STRIPE_MASTER_PRICE_ID"),
 }
+
 class SubscriptionViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = SubscriptionSerializer
@@ -24,7 +25,10 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
     def create_checkout(self, request):
         plan = request.data.get("plan")
         if plan not in PRICE_IDS or not PRICE_IDS[plan]:
-            return Response({"error": "Invalid plan specified or Price ID not configured."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Invalid plan specified or Price ID not configured."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         user = request.user
         customer_id = None
@@ -57,10 +61,12 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
                     "status": "pending_confirmation",
                 }
             )
-            return Response({"checkout_url": checkout_session.url}, status=status.HTTP_200_OK)
+            return Response(
+                {"checkout_url": checkout_session.url},
+                status=status.HTTP_200_OK
+            )
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=["post"], url_path='manage-portal')
     def create_portal_session(self, request):
@@ -70,7 +76,7 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
             customer_id = subscription.stripe_customer_id
         except Subscription.DoesNotExist:
             return Response(
-                {"error": "User does not have a subscription to manage."},
+                {"detail": "User does not have a subscription to manage."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -81,9 +87,9 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
                 customer=customer_id,
                 return_url=return_url,
             )
-            return Response({"portal_url": portal_session.url}, status=status.HTTP_200_OK)
-        except Exception as e:
             return Response(
-                {"error": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"portal_url": portal_session.url},
+                status=status.HTTP_200_OK
             )
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
