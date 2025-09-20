@@ -13,10 +13,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 from subscription.models import Subscription
 from .models import UserProfile, AuthToken, PasswordHistory, UserActivityLog, OnboardingStatus
-
-# === IMPORT THE HELPER FUNCTION FROM THE NEW UTILS FILE ===
 from .utils import send_email
-# =======================================================
 
 class PasswordValidator:
     @staticmethod
@@ -125,7 +122,7 @@ class UnifiedProfileUpdateSerializer(serializers.Serializer):
         if not check_password(value, user.password):
             raise serializers.ValidationError("Your current password is not correct.")
         return value
-    
+
     def validate_new_email(self, value):
         user = self.context['request'].user
         if User.objects.filter(email=value).exclude(pk=user.pk).exists():
@@ -144,50 +141,43 @@ class UnifiedProfileUpdateSerializer(serializers.Serializer):
     def update(self, instance, validated_data):
         user = instance.user
         profile = instance
-
         user.first_name = validated_data.get('first_name', user.first_name)
         user.last_name = validated_data.get('last_name', user.last_name)
-        
         if 'new_password' in validated_data and 'current_password' in validated_data:
             user.set_password(validated_data['new_password'])
             PasswordHistory.objects.create(user=user, password_hash=user.password)
             OutstandingToken.objects.filter(user=user).delete()
-        
         user.save()
-
         profile.phone_number = validated_data.get('phone_number', profile.phone_number)
         profile.allow_push_notifications = validated_data.get('allow_push_notifications', profile.allow_push_notifications)
-        
         if 'profile_picture' in validated_data:
             profile.profile_picture = validated_data.get('profile_picture')
-
         profile.save()
-
         new_email = validated_data.get('new_email')
         if new_email and new_email.lower() != user.email.lower():
             request = self.context['request']
             AuthToken.objects.filter(user=user, token_type='email_change', is_used=False).delete()
             token = AuthToken.objects.create(user=user, token_type='email_change', new_email=new_email)
             verification_url = request.build_absolute_uri(reverse('email_change_confirm') + f'?token={token.token}')
-            
             html_message = render_to_string('emails/email_change_verification.html', {'username': user.username, 'verification_url': verification_url})
             plain_message = f'Please click the link to confirm your new email: {verification_url}'
             send_email('Confirm Your New Email Address', plain_message, [new_email], html_message=html_message)
-
         return profile
 
 class PasswordResetRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
-class PasswordResetConfirmSerializer(serializers.Serializer):
-    reset_id = serializers.UUIDField(required=True)
-    new_password = serializers.CharField(write_only=True, required=True, validators=[PasswordValidator.validate_password_strength, PasswordValidator.validate_breached_password])
+# === NEW, SIMPLER SERIALIZER FOR THE RESET FORM ===
+class PasswordResetFormSerializer(serializers.Serializer):
+    new_password = serializers.CharField(write_only=True, required=True, validators=[PasswordValidator.validate_password_strength])
     confirm_password = serializers.CharField(write_only=True, required=True)
 
     def validate(self, data):
         if data['new_password'] != data['confirm_password']:
             raise serializers.ValidationError("The two password fields didn't match.")
         return data
+
+# The old PasswordResetConfirmSerializer is now obsolete and has been removed.
 
 class EmailChangeConfirmSerializer(serializers.Serializer):
     token = serializers.UUIDField()

@@ -1,5 +1,3 @@
-# magictale/settings.py
-
 from pathlib import Path
 from datetime import timedelta
 import os
@@ -24,7 +22,6 @@ if not SECRET_KEY:
 DEBUG = os.getenv('DJANGO_DEBUG', 'False') == 'True'
 
 # --- Host and CORS Configuration ---
-# This section is now simplified for a proxy setup like Nginx
 ALLOWED_HOSTS_STR = os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1')
 ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_STR.split(',')]
 
@@ -146,11 +143,15 @@ STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
 # --- Channels and Celery ---
 REDIS_URL = os.getenv("REDIS_URL")
+# WARNING: REDIS_URL is REQUIRED for production.
 if REDIS_URL:
+    # Production configuration
     CHANNEL_LAYERS = {"default": {"BACKEND": "channels_redis.core.RedisChannelLayer", "CONFIG": {"hosts": [REDIS_URL]}}}
     CELERY_BROKER_URL = REDIS_URL
     CELERY_RESULT_BACKEND = REDIS_URL
 else:
+    # Local development fallback ONLY
+    print("WARNING: REDIS_URL not set. Using in-memory fallback for Channels and Celery.")
     CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
     CELERY_BROKER_URL = 'memory://'
     CELERY_RESULT_BACKEND = 'django-db'
@@ -188,3 +189,8 @@ NARRATOR_VOICES = {
     "basic": ["alloy", "echo", "fable"],
     "premium": ["onyx", "nova", "shimmer"]
 }
+
+
+AI_TEXT_MODEL = os.getenv("AI_TEXT_MODEL", "gpt-4o-mini")
+AI_IMAGE_MODEL = os.getenv("AI_IMAGE_MODEL", "dall-e-3")
+AI_AUDIO_MODEL = os.getenv("AI_AUDIO_MODEL", "tts-1")

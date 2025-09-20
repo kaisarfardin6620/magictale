@@ -6,13 +6,11 @@ from .views import (
     ResendVerificationEmailAPIView,
     MyTokenObtainPairView,
     PasswordResetInitiateAPIView,
-    PasswordResetVerifyAPIView,
-    PasswordResetConfirmAPIView,
-    ProfileView,  
+    PasswordResetConfirmView,  
+    ProfileView,
     UserActivityLogAPIView,
     DeleteAccountView,
     EmailChangeConfirmAPIView,
-    OnboardingStatusView,
     LanguagePreferenceView,
 )
 
@@ -24,11 +22,9 @@ urlpatterns = [
     path('email-verify/', EmailVerificationAPIView.as_view(), name='email_verification'),
     path('resend-verification/', ResendVerificationEmailAPIView.as_view(), name='resend_verification'),
     path('password-reset/', PasswordResetInitiateAPIView.as_view(), name='password_reset_initiate'),
-    path('password-reset/verify/', PasswordResetVerifyAPIView.as_view(), name='password_reset_verify'),
-    path('password-reset/confirm/', PasswordResetConfirmAPIView.as_view(), name='password_reset_confirm'),
+    path('password-reset/confirm/<uuid:token>/', PasswordResetConfirmView.as_view(), name='password_reset_confirm'),
     path('profile/', ProfileView.as_view(), name='profile'),
     path('profile/language/', LanguagePreferenceView.as_view(), name='language-preference'),
     path('email-change/confirm/', EmailChangeConfirmAPIView.as_view(), name='email_change_confirm'),
     path('activity-log/', UserActivityLogAPIView.as_view(), name='activity_log'),
-    path('onboarding/', OnboardingStatusView.as_view(), name='onboarding_status'),
 ]

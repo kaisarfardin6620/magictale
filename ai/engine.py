@@ -1,5 +1,3 @@
-# ai/engine.py
-
 import asyncio
 import os
 import json
@@ -13,10 +11,8 @@ from openai import OpenAI
 
 from .models import StoryProject, StoryPage, GenerationEvent
 
-# Initialize the OpenAI client
 client = OpenAI(api_key=getattr(settings, "OPENAI_API_KEY", None))
 
-# --- Database & Channel Helpers (Async) ---
 
 @sync_to_async
 def _reload_project(project_id: int) -> StoryProject:
@@ -115,20 +111,17 @@ The illustration should be vibrant, whimsical, and suitable for a young child.
 Do not include any text, letters, words, or bubbles in the image.
 """
 
-# --- AI Generation & File Handling Helpers ---
 
 def _split_into_pages(text: str) -> List[str]:
-    """Splits the AI's text output into a list of pages."""
     parts = [p.strip() for p in text.split("--- PAGE ---") if p.strip()]
-    return parts[:12] # Limit to a maximum of 12 pages
+    return parts[:12]
 
 @sync_to_async
 def _generate_and_save_image(page: StoryPage, project: StoryProject):
-    """Generates an image for a page and saves the URL."""
     prompt = _build_image_prompt(page.text, project)
     try:
         response = client.images.generate(
-            model="dall-e-3",
+            model=settings.AI_IMAGE_MODEL,
             prompt=prompt,
             n=1,
             size="1024x1024",
@@ -143,10 +136,9 @@ def _generate_and_save_image(page: StoryPage, project: StoryProject):
 
 @sync_to_async
 def _generate_and_save_audio(page: StoryPage, project: StoryProject):
-    """Generates audio for a page and saves the file."""
     try:
         response = client.audio.speech.create(
-            model="tts-1",
+            model=settings.AI_AUDIO_MODEL,  
             voice=project.voice or "alloy",
             input=page.text,
             timeout=60.0,
@@ -161,16 +153,12 @@ def _generate_and_save_audio(page: StoryPage, project: StoryProject):
         print(f"Audio generation failed for project {project.id}, page {page.index}: {e}")
         raise e
 
-# --- Main Asynchronous Generation Task ---
-
 async def run_generation_async(project_id: int):
-    """The main async task that orchestrates the entire story generation process."""
     project = await _reload_project(project_id)
     await _save_event(project, "start", {"status": project.status})
     await _send(project_id, {"status": "running", "progress": project.progress})
 
     try:
-        # 1. Generate Story Text
         prompt = _build_story_prompt(project)
         await _save_event(project, "prompt", {"prompt": prompt})
         await _update_progress(project, progress=10)
@@ -178,7 +166,7 @@ async def run_generation_async(project_id: int):
 
         resp = await asyncio.to_thread(
             client.chat.completions.create,
-            model=project.model_used or "gpt-4o-mini",
+            model=project.model_used or settings.AI_TEXT_MODEL,  
             messages=[
                 {"role": "system", "content": "You are a helpful and creative storyteller for children."},
                 {"role": "user", "content": prompt}
@@ -197,7 +185,6 @@ async def run_generation_async(project_id: int):
         await _save_event(project, "pages_built", {"count": len(pages_text)})
         await _update_progress(project, progress=60)
 
-        # 2. Generate Images and Audio Concurrently
         await _send(project_id, {"message": f"Creating {len(pages_text)} pages of art and audio...", "progress": 65})
         project_pages = await sync_to_async(list)(project.pages.all())
         multimedia_tasks = []
@@ -208,12 +195,11 @@ async def run_generation_async(project_id: int):
         await _save_event(project, "multimedia_done", {})
         await _update_progress(project, progress=90)
         
-        # 3. Generate Synopsis, Tags, and Save Cover Image
         await _send(project_id, {"message": "Adding the finishing touches...", "progress": 91})
         synopsis_prompt = _build_synopsis_prompt(content)
         synopsis_resp = await asyncio.to_thread(
             client.chat.completions.create,
-            model="gpt-4o-mini",
+            model=settings.AI_TEXT_MODEL,  
             messages=[{"role": "user", "content": synopsis_prompt}],
             response_format={"type": "json_object"},
             temperature=0.5,
@@ -232,7 +218,6 @@ async def run_generation_async(project_id: int):
         await _save_event(project, "metadata_generated", extra_data)
         await _update_progress(project, progress=95)
 
-        # 4. Finalize
         await _update_progress(project, status="done", progress=100, finished=True)
         await _save_event(project, "done", {})
         await _send(project_id, {"status": "done", "progress": 100, "message": "Your story is complete!"})
