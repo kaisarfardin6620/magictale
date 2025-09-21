@@ -14,6 +14,7 @@ urlpatterns = [
     path("api/ai/", include("ai.urls")),
     path("api/subscriptions/", include("subscription.urls")),
     path("api/support/", include("support.urls")),
+    path('accounts/', include('allauth.urls')),
 ]
 
 

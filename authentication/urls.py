@@ -12,6 +12,7 @@ from .views import (
     DeleteAccountView,
     EmailChangeConfirmAPIView,
     LanguagePreferenceView,
+    GoogleLoginView,
 )
 
 urlpatterns = [
@@ -27,4 +28,5 @@ urlpatterns = [
     path('profile/language/', LanguagePreferenceView.as_view(), name='language-preference'),
     path('email-change/confirm/', EmailChangeConfirmAPIView.as_view(), name='email_change_confirm'),
     path('activity-log/', UserActivityLogAPIView.as_view(), name='activity_log'),
+    path('google/', GoogleLoginView.as_view(), name='google_login'),
 ]

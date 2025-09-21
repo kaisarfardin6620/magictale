@@ -1,5 +1,3 @@
-# authentication/views.py
-
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.contrib.auth.hashers import check_password
@@ -12,18 +10,25 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
-
+from rest_framework_simplejwt.tokens import RefreshToken
+from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
+from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from .utils import get_client_ip, send_email
 from .models import AuthToken, UserProfile, PasswordHistory, UserActivityLog, OnboardingStatus
 from .permissions import HasActiveSubscription
 from .serializers import (
-    SignupSerializer, PasswordResetRequestSerializer, ProfileSerializer, 
-    ResendVerificationSerializer, MyTokenObtainPairSerializer, UserActivityLogSerializer, 
-    EmailChangeConfirmSerializer, LanguagePreferenceSerializer, OnboardingStatusSerializer, 
-    UnifiedProfileUpdateSerializer, PasswordResetFormSerializer  # <-- Import the new serializer
+    SignupSerializer,
+    PasswordResetRequestSerializer,
+    ProfileSerializer,
+    ResendVerificationSerializer,
+    MyTokenObtainPairSerializer,
+    UserActivityLogSerializer,
+    EmailChangeConfirmSerializer,
+    LanguagePreferenceSerializer,
+    UnifiedProfileUpdateSerializer,
+    PasswordResetFormSerializer
 )
 
-# ... (Signup, EmailVerification, ProfileView, etc. remain the same) ...
 
 class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
@@ -219,3 +224,36 @@ class LanguagePreferenceView(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+class GoogleLoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        access_token = request.data.get("access_token")
+        if not access_token:
+            return Response({"detail": "An access token from Google is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            adapter = GoogleOAuth2Adapter(request)
+            client = OAuth2Client(request, adapter.get_provider().get_app(request))
+            
+            token_data = client.get_access_token(access_token)
+            
+            login = adapter.complete_login(request, adapter.get_provider().get_app(request), token_data)
+            login.state = {} 
+            login.save(request)
+
+            user = login.user
+            
+            refresh = RefreshToken.for_user(user)
+            
+            token_serializer = MyTokenObtainPairSerializer(context={'request': request})
+            access_token_with_claims = token_serializer.get_token(user)
+
+            return Response({
+                'refresh': str(refresh),
+                'access': str(access_token_with_claims)
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({"detail": f"An error occurred during Google authentication: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)

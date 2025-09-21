@@ -1,11 +1,6 @@
-# authentication/permissions.py
-
 from rest_framework import permissions
 
 class HasActiveSubscription(permissions.BasePermission):
-    """
-    Custom permission to only allow users with an active or trialing subscription.
-    """
     message = "An active subscription is required to perform this action."
 
     def has_permission(self, request, view):
@@ -26,17 +21,10 @@ class HasActiveSubscription(permissions.BasePermission):
         return is_active
 
 class IsOwner(permissions.BasePermission):
-    """
-    Custom permission to only allow owners of an object to view or edit it.
-    """
     def has_object_permission(self, request, view, obj):
         return obj.user == request.user
 
 class IsStoryMaster(permissions.BasePermission):
-    """
-    Custom permission to only allow access to users on the 'master' plan
-    or users who are currently in a trial period.
-    """
     message = "This feature requires a Story Master subscription."
 
     def has_permission(self, request, view):
