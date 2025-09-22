@@ -128,6 +128,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             return None
 
 class UnifiedProfileUpdateSerializer(serializers.Serializer):
+    user_name = serializers.CharField(max_length=301, required=False) 
     first_name = serializers.CharField(max_length=150, required=False)
     last_name = serializers.CharField(max_length=150, required=False)
     new_email = serializers.EmailField(required=False, write_only=True)
@@ -161,8 +162,16 @@ class UnifiedProfileUpdateSerializer(serializers.Serializer):
     def update(self, instance, validated_data):
         user = instance.user
         profile = instance
-        user.first_name = validated_data.get('first_name', user.first_name)
-        user.last_name = validated_data.get('last_name', user.last_name)
+
+        if 'user_name' in validated_data:
+            full_name = validated_data.get('user_name', '').strip()
+            name_parts = full_name.split(' ', 1)
+            user.first_name = name_parts[0]
+            user.last_name = name_parts[1] if len(name_parts) > 1 else ''
+        else:
+            user.first_name = validated_data.get('first_name', user.first_name)
+            user.last_name = validated_data.get('last_name', user.last_name)
+
         new_email = validated_data.get('new_email')
         if new_email and new_email.lower() != user.email.lower():
             user.email = new_email
@@ -171,12 +180,15 @@ class UnifiedProfileUpdateSerializer(serializers.Serializer):
             user.set_password(validated_data['new_password'])
             PasswordHistory.objects.create(user=user, password_hash=user.password)
             OutstandingToken.objects.filter(user=user).delete()
+        
         user.save()
+
         profile.phone_number = validated_data.get('phone_number', profile.phone_number)
         profile.allow_push_notifications = validated_data.get('allow_push_notifications', profile.allow_push_notifications)
         if 'profile_picture' in validated_data:
             profile.profile_picture = validated_data.get('profile_picture')
         profile.save()
+
         return profile
 
 class PasswordResetRequestSerializer(serializers.Serializer):

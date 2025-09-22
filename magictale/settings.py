@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'ai',
     'subscription',
     'support',
+    'dashboard',
 ]
 
 SITE_ID = 1
