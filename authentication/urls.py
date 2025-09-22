@@ -10,7 +10,6 @@ from .views import (
     ProfileView,
     UserActivityLogAPIView,
     DeleteAccountView,
-    EmailChangeConfirmAPIView,
     LanguagePreferenceView,
     GoogleLoginView,
 )
@@ -26,7 +25,6 @@ urlpatterns = [
     path('password-reset/confirm/<uuid:token>/', PasswordResetConfirmView.as_view(), name='password_reset_confirm'),
     path('profile/', ProfileView.as_view(), name='profile'),
     path('profile/language/', LanguagePreferenceView.as_view(), name='language-preference'),
-    path('email-change/confirm/', EmailChangeConfirmAPIView.as_view(), name='email_change_confirm'),
     path('activity-log/', UserActivityLogAPIView.as_view(), name='activity_log'),
     path('google/', GoogleLoginView.as_view(), name='google_login'),
 ]

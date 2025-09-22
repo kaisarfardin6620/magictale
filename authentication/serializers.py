@@ -1,5 +1,3 @@
-# authentication/serializers.py
-
 import re
 import hashlib
 import requests
@@ -9,11 +7,12 @@ from django.contrib.auth.hashers import check_password
 from django.urls import reverse
 from django.template.loader import render_to_string
 from rest_framework import serializers
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 from subscription.models import Subscription
 from .models import UserProfile, AuthToken, PasswordHistory, UserActivityLog, OnboardingStatus
 from .utils import send_email
+from django.contrib.auth import authenticate
+from rest_framework_simplejwt.tokens import RefreshToken
 
 class PasswordValidator:
     @staticmethod
@@ -63,24 +62,40 @@ class SignupSerializer(serializers.ModelSerializer):
         UserProfile.objects.create(user=user)
         return user
 
-class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
-    @classmethod
-    def get_token(cls, user):
-        token = super().get_token(user)
-        token['username'] = user.username
+class MyTokenObtainPairSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        email = attrs.get('email')
+        password = attrs.get('password')
+        if not email or not password:
+            raise serializers.ValidationError('Must include "email" and "password".')
+        try:
+            user_obj = User.objects.get(email__iexact=email)
+        except User.DoesNotExist:
+            raise serializers.ValidationError('No active account found with the given credentials')
+        user = authenticate(request=self.context.get('request'), username=user_obj.username, password=password)
+        if not user:
+            raise serializers.ValidationError('No active account found with the given credentials')
+        refresh = RefreshToken.for_user(user)
+        access_token = refresh.access_token
+        access_token['username'] = user.username
         try:
             subscription = user.subscription
-            token['plan'] = subscription.plan
-            token['subscription_status'] = subscription.status
+            access_token['plan'] = subscription.plan
+            access_token['subscription_status'] = subscription.status
         except AttributeError:
-            token['plan'] = None
-            token['subscription_status'] = 'inactive'
-        return token
+            access_token['plan'] = None
+            access_token['subscription_status'] = 'inactive'
+        data = {'refresh': str(refresh), 'access': str(access_token)}
+        return data
 
 class ProfileSerializer(serializers.ModelSerializer):
     subscription_active = serializers.SerializerMethodField()
     current_plan = serializers.SerializerMethodField()
     trial_end_date = serializers.SerializerMethodField()
+    profile_picture = serializers.SerializerMethodField() 
 
     class Meta:
         model = UserProfile
@@ -88,6 +103,11 @@ class ProfileSerializer(serializers.ModelSerializer):
             'profile_picture', 'phone_number', 'language', 'allow_push_notifications',
             'subscription_active', 'current_plan', 'trial_end_date'
         ]
+
+    def get_profile_picture(self, obj):
+        if obj.profile_picture and hasattr(obj.profile_picture, 'url'):
+            return f"{settings.BACKEND_BASE_URL}{obj.profile_picture.url}"
+        return None
 
     def get_subscription_active(self, obj):
         try:
@@ -143,6 +163,10 @@ class UnifiedProfileUpdateSerializer(serializers.Serializer):
         profile = instance
         user.first_name = validated_data.get('first_name', user.first_name)
         user.last_name = validated_data.get('last_name', user.last_name)
+        new_email = validated_data.get('new_email')
+        if new_email and new_email.lower() != user.email.lower():
+            user.email = new_email
+            user.username = new_email
         if 'new_password' in validated_data and 'current_password' in validated_data:
             user.set_password(validated_data['new_password'])
             PasswordHistory.objects.create(user=user, password_hash=user.password)
@@ -153,21 +177,11 @@ class UnifiedProfileUpdateSerializer(serializers.Serializer):
         if 'profile_picture' in validated_data:
             profile.profile_picture = validated_data.get('profile_picture')
         profile.save()
-        new_email = validated_data.get('new_email')
-        if new_email and new_email.lower() != user.email.lower():
-            request = self.context['request']
-            AuthToken.objects.filter(user=user, token_type='email_change', is_used=False).delete()
-            token = AuthToken.objects.create(user=user, token_type='email_change', new_email=new_email)
-            verification_url = request.build_absolute_uri(reverse('email_change_confirm') + f'?token={token.token}')
-            html_message = render_to_string('emails/email_change_verification.html', {'username': user.username, 'verification_url': verification_url})
-            plain_message = f'Please click the link to confirm your new email: {verification_url}'
-            send_email('Confirm Your New Email Address', plain_message, [new_email], html_message=html_message)
         return profile
 
 class PasswordResetRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
-# === NEW, SIMPLER SERIALIZER FOR THE RESET FORM ===
 class PasswordResetFormSerializer(serializers.Serializer):
     new_password = serializers.CharField(write_only=True, required=True, validators=[PasswordValidator.validate_password_strength])
     confirm_password = serializers.CharField(write_only=True, required=True)
@@ -176,8 +190,6 @@ class PasswordResetFormSerializer(serializers.Serializer):
         if data['new_password'] != data['confirm_password']:
             raise serializers.ValidationError("The two password fields didn't match.")
         return data
-
-# The old PasswordResetConfirmSerializer is now obsolete and has been removed.
 
 class EmailChangeConfirmSerializer(serializers.Serializer):
     token = serializers.UUIDField()
@@ -189,17 +201,6 @@ class UserActivityLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserActivityLog
         fields = ['activity_type', 'timestamp', 'ip_address', 'user_agent']
-
-class OnboardingStatusSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = OnboardingStatus
-        fields = ['id', 'child_name', 'age', 'pronouns', 'favorite_animal', 'favorite_color', 'onboarding_complete']
-        read_only_fields = ['id']
-
-    def create(self, validated_data):
-        user = self.context['request'].user
-        onboarding_status, created = OnboardingStatus.objects.update_or_create(user=user, defaults=validated_data)
-        return onboarding_status
 
 class LanguagePreferenceSerializer(serializers.ModelSerializer):
     class Meta:

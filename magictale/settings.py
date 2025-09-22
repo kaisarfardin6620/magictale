@@ -1,32 +1,22 @@
-# magictale/settings.py
-
 from pathlib import Path
 from datetime import timedelta
 import os
-import json
-import firebase_admin
-from firebase_admin import credentials
 from dotenv import load_dotenv
 import dj_database_url
 
-# Load environment variables from a .env file
 load_dotenv()
-
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # --- Core Security Settings ---
 SECRET_KEY = os.getenv('SECRET_KEY')
 if not SECRET_KEY:
     raise ValueError("A SECRET_KEY must be set in the .env file")
-DEBUG = os.getenv('DJANGO_DEBUG', 'False') == 'True'
+DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
-# --- Host and CORS Configuration ---
-ALLOWED_HOSTS_STR = os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1')
-ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_STR.split(',')]
+# --- Host and CORS/CSRF Configuration ---
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',')
+CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:3000').split(',')
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
-CORS_ALLOWED_ORIGINS = [FRONTEND_URL]
-CSRF_TRUSTED_ORIGINS = [FRONTEND_URL]
 
 # --- Application Definition ---
 INSTALLED_APPS = [
@@ -37,16 +27,18 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.sites',  # Required by allauth
+    'django.contrib.sites',
+    'corsheaders',
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'channels',
-    'corsheaders',
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
+    'storages',  
+    'fcm_django', 
     'authentication',
     'ai',
     'subscription',
@@ -57,9 +49,9 @@ SITE_ID = 1
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware', # Should be high up
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -69,29 +61,11 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'magictale.urls'
-TEMPLATES = [
-    {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [], 'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.debug',
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
-                'django.template.context_processors.request', # Required by allauth
-            ],
-        },
-    },
-]
 ASGI_APPLICATION = 'magictale.asgi.application'
 
 # --- Database & Auth Backends ---
 DATABASES = {'default': dj_database_url.config(default=f'sqlite:///{BASE_DIR / "db.sqlite3"}', conn_max_age=600)}
-AUTHENTICATION_BACKENDS = (
-    'django.contrib.auth.backends.ModelBackend',
-    'allauth.account.auth_backends.AuthenticationBackend',
-)
+AUTHENTICATION_BACKENDS = ('django.contrib.auth.backends.ModelBackend', 'allauth.account.auth_backends.AuthenticationBackend',)
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
@@ -99,19 +73,61 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-# --- Internationalization, Static, Media, etc. ---
+# --- Internationalization ---
 LANGUAGE_CODE, TIME_ZONE, USE_I18N, USE_TZ = 'en-us', 'UTC', True, True
-STATIC_URL, STATIC_ROOT = '/static/', BASE_DIR / 'staticfiles'
-MEDIA_URL, MEDIA_ROOT = '/media/', BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# --- MASTER SWITCH FOR CLOUD STORAGE ---
+USE_S3_STORAGE = os.getenv('USE_S3_STORAGE', 'False').lower() == 'true'
+
+# --- Static & Media Files ---
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+if USE_S3_STORAGE:
+    # --- S3 Storage Configuration ---
+    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+    AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
+    AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME')
+    AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+    AWS_S3_ADDRESSING_STYLE = "virtual"
+    AWS_S3_SIGNATURE_VERSION = 's3v4'
+    AWS_QUERYSTRING_AUTH = True
+    AWS_QUERYSTRING_EXPIRE = 3600
+    MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/'
+else:
+    # --- Local Storage Configuration ---
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
+
+# --- Templates ---
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates', 'DIRS': [], 'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.debug',
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
+]
 
 # --- REST Framework and JWT Settings ---
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': ('rest_framework_simplejwt.authentication.JWTAuthentication',),
     'DEFAULT_THROTTLE_CLASSES': ['rest_framework.throttling.AnonRateThrottle', 'rest_framework.throttling.UserRateThrottle'],
     'DEFAULT_THROTTLE_RATES': {'anon': '100/day', 'user': '1000/day'},
-    'DEFAULT_RENDERER_CLASSES': ['magictale.api.renderers.CustomJSONRenderer'],
-    'EXCEPTION_HANDLER': 'magictale.api.exceptions.custom_exception_handler'
+    'DEFAULT_RENDERER_CLASSES': [
+        'magictale.api.renderers.CustomJSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer', # Good for development
+    ],
+    'EXCEPTION_HANDLER': 'magictale.api.exceptions.custom_exception_handler',
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
 }
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
@@ -122,6 +138,7 @@ SIMPLE_JWT = {
     'ALGORITHM': 'HS256',
     'SIGNING_KEY': SECRET_KEY,
 }
+CORS_ALLOW_CREDENTIALS = True
 
 # --- Email Settings ---
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
@@ -131,8 +148,10 @@ EMAIL_HOST_USER, EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_USER'), os.getenv('
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL')
 
 # --- Third-Party API Keys ---
-OPENAI_API_KEY, STRIPE_SECRET_KEY = os.getenv("OPENAI_API_KEY"), os.getenv("STRIPE_SECRET_KEY")
-STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_PUBLISHABLE_KEY"), os.getenv("STRIPE_WEBHOOK_SECRET")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
 # --- Channels and Celery ---
 REDIS_URL = os.getenv("REDIS_URL")
@@ -140,14 +159,13 @@ if REDIS_URL:
     CHANNEL_LAYERS = {"default": {"BACKEND": "channels_redis.core.RedisChannelLayer", "CONFIG": {"hosts": [REDIS_URL]}}}
     CELERY_BROKER_URL, CELERY_RESULT_BACKEND = REDIS_URL, REDIS_URL
 else:
-    print("WARNING: REDIS_URL not set. Using in-memory fallback for Channels and Celery.")
     CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
     CELERY_BROKER_URL, CELERY_RESULT_BACKEND = 'memory://', 'django-db'
 CELERY_ACCEPT_CONTENT, CELERY_TASK_SERIALIZER = ['json'], 'json'
 CELERY_RESULT_SERIALIZER, CELERY_TIMEZONE = 'json', 'UTC'
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
-# --- Allauth Configuration (Fully Updated) ---
+# --- Allauth Configuration ---
 ACCOUNT_AUTHENTICATION_METHOD = 'email'
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_USERNAME_REQUIRED = False
@@ -155,37 +173,25 @@ SOCIALACCOUNT_AUTO_SIGNUP = True
 SOCIALACCOUNT_ADAPTER = 'authentication.adapter.CustomSocialAccountAdapter'
 ACCOUNT_SIGNUP_FORM_CLASS = None
 ACCOUNT_EMAIL_VERIFICATION = 'optional'
-
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
-        'APP': {
-            'client_id': os.getenv('GOOGLE_CLIENT_ID'),
-            'secret': os.getenv('GOOGLE_CLIENT_SECRET'),
-        },
-        'SCOPE': ['profile', 'email'],
-        'AUTH_PARAMS': {'access_type': 'online'},
-        'VERIFIED_EMAIL': True,
+        'APP': {'client_id': os.getenv('GOOGLE_CLIENT_ID'), 'secret': os.getenv('GOOGLE_CLIENT_SECRET')},
+        'SCOPE': ['profile', 'email'], 'AUTH_PARAMS': {'access_type': 'online'}, 'VERIFIED_EMAIL': True,
     }
 }
 
-# --- AI Model Configuration ---
-AI_TEXT_MODEL = os.getenv("AI_TEXT_MODEL", "gpt-4o-mini")
-AI_IMAGE_MODEL = os.getenv("AI_IMAGE_MODEL", "dall-e-3")
-AI_AUDIO_MODEL = os.getenv("AI_AUDIO_MODEL", "tts-1")
+# --- FCM Push Notifications ---
+FCM_DJANGO_SETTINGS = {
+    "APP_VERBOSE_NAME": "MagicTale",
+    "FCM_SERVER_KEY": os.getenv('FCM_SERVER_KEY_LEGACY'), 
+    "ONE_DEVICE_PER_USER": False,
+    "DELETE_INACTIVE_DEVICES": True,
+    "FCM_CREDENTIALS": os.getenv('FIREBASE_SERVICE_ACCOUNT_PATH'),
+}
 
-# --- Firebase Initialization ---
-try:
-    firebase_creds_json_str = os.getenv("FIREBASE_CREDENTIALS_JSON")
-    if firebase_creds_json_str:
-        firebase_creds_dict = json.loads(firebase_creds_json_str)
-        cred = credentials.Certificate(firebase_creds_dict)
-    else:
-        cred_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH")
-        if cred_path and os.path.exists(cred_path):
-            cred = credentials.Certificate(cred_path)
-        else:
-            cred = None
-    if cred and not firebase_admin._apps:
-        firebase_admin.initialize_app(cred)
-except Exception as e:
-    print(f"WARNING: Could not initialize Firebase Admin SDK: {e}")
+# --- AI Model Configuration ---
+AI_TEXT_MODEL, AI_IMAGE_MODEL, AI_AUDIO_MODEL = os.getenv("AI_TEXT_MODEL", "gpt-4o-mini"), os.getenv("AI_IMAGE_MODEL", "dall-e-3"), os.getenv("AI_AUDIO_MODEL", "tts-1")
+
+
+# magictale/settings.py
+BACKEND_BASE_URL = os.getenv('BACKEND_BASE_URL', 'http://127.0.0.1:8001')

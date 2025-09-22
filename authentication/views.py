@@ -1,6 +1,5 @@
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.contrib.auth.hashers import check_password
 from django.urls import reverse
 from django.shortcuts import render
 from django.template.loader import render_to_string
@@ -8,14 +7,12 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from .utils import get_client_ip, send_email
-from .models import AuthToken, UserProfile, PasswordHistory, UserActivityLog, OnboardingStatus
-from .permissions import HasActiveSubscription
+from .models import AuthToken, UserProfile, PasswordHistory, UserActivityLog
 from .serializers import (
     SignupSerializer,
     PasswordResetRequestSerializer,
@@ -29,9 +26,13 @@ from .serializers import (
     PasswordResetFormSerializer
 )
 
-
-class MyTokenObtainPairView(TokenObtainPairView):
+class MyTokenObtainPairView(APIView):
+    permission_classes = [AllowAny]
     serializer_class = MyTokenObtainPairSerializer
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
 
 class SignupAPIView(APIView):
     permission_classes = [AllowAny]
@@ -116,33 +117,6 @@ class ProfileView(APIView):
         except UserProfile.DoesNotExist:
             return Response({'detail': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-class EmailChangeConfirmAPIView(APIView):
-    permission_classes = [AllowAny]
-    def get(self, request):
-        serializer = EmailChangeConfirmSerializer(data=request.query_params)
-        context = {'home_url': settings.FRONTEND_URL, 'login_url': f"{settings.FRONTEND_URL}/login"}
-        if not serializer.is_valid():
-            context['error_message'] = 'A valid confirmation token is required.'
-            return render(request, 'verification/verification_error.html', context, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            token = AuthToken.objects.get(token=serializer.validated_data.get('token'), token_type='email_change', is_used=False)
-            if not token.is_valid():
-                context['error_message'] = 'This confirmation link is invalid or has expired.'
-                return render(request, 'verification/verification_error.html', context, status=status.HTTP_400_BAD_REQUEST)
-            user = token.user
-            new_email = token.new_email
-            if User.objects.filter(email=new_email).exclude(id=user.id).exists():
-                context['error_message'] = 'This email address is already in use by another account.'
-                return render(request, 'verification/verification_error.html', context, status=status.HTTP_400_BAD_REQUEST)
-            user.email = new_email
-            user.save()
-            token.is_used = True
-            token.save()
-            context.update({'title': 'Email Changed Successfully!', 'message': 'Your email address has been updated.'})
-            return render(request, 'verification/verification_success.html', context)
-        except AuthToken.DoesNotExist:
-            context['error_message'] = 'This confirmation link is invalid or has expired.'
-            return render(request, 'verification/verification_error.html', context, status=status.HTTP_400_BAD_REQUEST)
 
 class PasswordResetInitiateAPIView(APIView):
     permission_classes = [AllowAny]
@@ -236,20 +210,16 @@ class GoogleLoginView(APIView):
         try:
             adapter = GoogleOAuth2Adapter(request)
             client = OAuth2Client(request, adapter.get_provider().get_app(request))
-            
             token_data = client.get_access_token(access_token)
-            
             login = adapter.complete_login(request, adapter.get_provider().get_app(request), token_data)
             login.state = {} 
             login.save(request)
-
             user = login.user
-            
             refresh = RefreshToken.for_user(user)
-            
-            token_serializer = MyTokenObtainPairSerializer(context={'request': request})
+            token_serializer = MyTokenObtainPairSerializer(data={'email': user.email, 'password': ''}, context={'request': request})
+            token_serializer.is_valid()
             access_token_with_claims = token_serializer.get_token(user)
-
+            
             return Response({
                 'refresh': str(refresh),
                 'access': str(access_token_with_claims)
