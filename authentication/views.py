@@ -20,19 +20,21 @@ from .serializers import (
     ResendVerificationSerializer,
     MyTokenObtainPairSerializer,
     UserActivityLogSerializer,
-    EmailChangeConfirmSerializer,
     LanguagePreferenceSerializer,
     UnifiedProfileUpdateSerializer,
     PasswordResetFormSerializer
 )
 
+
 class MyTokenObtainPairView(APIView):
     permission_classes = [AllowAny]
     serializer_class = MyTokenObtainPairSerializer
+
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
+
 
 class SignupAPIView(APIView):
     permission_classes = [AllowAny]
@@ -42,12 +44,16 @@ class SignupAPIView(APIView):
             user = serializer.save()
             UserActivityLog.objects.create(user=user, activity_type='signup', ip_address=get_client_ip(request))
             token = AuthToken.objects.create(user=user, token_type='email_verification')
-            verification_url = request.build_absolute_uri(reverse('email_verification') + f'?token={token.token}')
+            
+            verification_path = reverse('email_verification') + f'?token={token.token}'
+            verification_url = f"{settings.BACKEND_BASE_URL}{verification_path}"
+
             html_message = render_to_string('emails/signup_verification_email.html', {'username': user.username, 'verification_url': verification_url})
             plain_message = f'Please click the link to verify your email: {verification_url}'
             send_email('Verify your email for MagicTale', plain_message, [user.email], html_message=html_message)
             return Response({"message": "User created successfully. Please check your email for verification."}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 class EmailVerificationAPIView(APIView):
     permission_classes = [AllowAny]
@@ -85,7 +91,10 @@ class ResendVerificationEmailAPIView(APIView):
                     return Response({'detail': 'This account is already active.'}, status=status.HTTP_400_BAD_REQUEST)
                 AuthToken.objects.filter(user=user, token_type='email_verification', is_used=False).delete()
                 token = AuthToken.objects.create(user=user, token_type='email_verification')
-                verification_url = request.build_absolute_uri(reverse('email_verification') + f'?token={token.token}')
+                
+                verification_path = reverse('email_verification') + f'?token={token.token}'
+                verification_url = f"{settings.BACKEND_BASE_URL}{verification_path}"
+
                 html_message = render_to_string('emails/signup_verification_email.html', {'username': user.username, 'verification_url': verification_url})
                 send_email('Verify your email', f'Link: {verification_url}', [user.email], html_message=html_message)
                 return Response({"message": "Verification email has been resent."}, status=status.HTTP_200_OK)
@@ -128,7 +137,10 @@ class PasswordResetInitiateAPIView(APIView):
                 user = User.objects.get(email=email)
                 AuthToken.objects.filter(user=user, token_type='password_reset').delete()
                 token = AuthToken.objects.create(user=user, token_type='password_reset')
-                reset_url = request.build_absolute_uri(reverse('password_reset_confirm', kwargs={'token': token.token}))
+                
+                reset_path = reverse('password_reset_confirm', kwargs={'token': token.token})
+                reset_url = f"{settings.BACKEND_BASE_URL}{reset_path}"
+                
                 send_email('Password Reset Request', f'Click to reset: {reset_url}', [user.email])
             except User.DoesNotExist:
                 pass
@@ -216,10 +228,10 @@ class GoogleLoginView(APIView):
             login.save(request)
             user = login.user
             refresh = RefreshToken.for_user(user)
-            token_serializer = MyTokenObtainPairSerializer(data={'email': user.email, 'password': ''}, context={'request': request})
-            token_serializer.is_valid()
+            token_serializer = MyTokenObtainPairSerializer(data={'email': user.email, 'password': 'google_authenticated'})
+            token_serializer.context['request'] = request
+            token_serializer.is_valid() 
             access_token_with_claims = token_serializer.get_token(user)
-            
             return Response({
                 'refresh': str(refresh),
                 'access': str(access_token_with_claims)

@@ -134,6 +134,7 @@ class UnifiedProfileUpdateSerializer(serializers.Serializer):
     new_email = serializers.EmailField(required=False, write_only=True)
     current_password = serializers.CharField(style={'input_type': 'password'}, write_only=True, required=False)
     new_password = serializers.CharField(style={'input_type': 'password'}, write_only=True, required=False, validators=[PasswordValidator.validate_password_strength])
+    confirm_new_password = serializers.CharField(style={'input_type': 'password'}, write_only=True, required=False) 
     profile_picture = serializers.ImageField(required=False, allow_null=True)
     phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
     allow_push_notifications = serializers.BooleanField(required=False)
@@ -153,10 +154,18 @@ class UnifiedProfileUpdateSerializer(serializers.Serializer):
     def validate(self, data):
         if 'new_password' in data and 'current_password' not in data:
             raise serializers.ValidationError({"current_password": "You must provide your current password to set a new one."})
+            
+        if 'new_password' in data and 'confirm_new_password' in data:
+            if data['new_password'] != data['confirm_new_password']:
+                raise serializers.ValidationError({"confirm_new_password": "The two new password fields didn't match."})
+        elif 'new_password' in data:
+             raise serializers.ValidationError({"confirm_new_password": "You must confirm your new password."})
+        
         if 'new_password' in data and 'current_password' in data:
             user = self.context['request'].user
             if check_password(data['new_password'], user.password):
                 raise serializers.ValidationError({"new_password": "New password cannot be the same as the old password."})
+        
         return data
 
     def update(self, instance, validated_data):
@@ -176,6 +185,7 @@ class UnifiedProfileUpdateSerializer(serializers.Serializer):
         if new_email and new_email.lower() != user.email.lower():
             user.email = new_email
             user.username = new_email
+        
         if 'new_password' in validated_data and 'current_password' in validated_data:
             user.set_password(validated_data['new_password'])
             PasswordHistory.objects.create(user=user, password_hash=user.password)
