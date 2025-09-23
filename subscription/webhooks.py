@@ -1,5 +1,3 @@
-# subscriptions/webhooks.py
-
 import stripe
 import datetime
 from django.conf import settings
@@ -51,7 +49,6 @@ def _update_subscription_from_stripe_object(subscription_model, stripe_sub_objec
     except (AttributeError, IndexError, KeyError) as e:
         logger.warning(f"Could not get plan from lookup_key on subscription {stripe_sub_object.id}: {e}")
 
-    # --- THIS IS THE FINAL FIX ---
     # Use getattr() to safely access attributes that might not exist on the Stripe object,
     # preventing the AttributeError crash.
     trial_start_ts = getattr(stripe_sub_object, 'trial_start', None)
@@ -68,7 +65,6 @@ def _update_subscription_from_stripe_object(subscription_model, stripe_sub_objec
         subscription_model.save()
         logger.info(f"SUCCESS: Subscription {subscription_model.id} for user {subscription_model.user.id} updated to status '{subscription_model.status}'")
     except Exception as e:
-        # If this fails, it's almost certainly a ValidationError because the lookup_key in Stripe doesn't match a plan choice in models.py
         logger.error(f"DATABASE SAVE FAILED for subscription {subscription_model.id}. CHECK LOOKUP_KEY CASE. Error: {e}")
         raise e
 
