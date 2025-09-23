@@ -1,5 +1,3 @@
-# subscription/webhooks.py
-
 import stripe
 from django.conf import settings
 from django.http import HttpResponse, HttpResponseBadRequest
@@ -15,7 +13,6 @@ from rest_framework.permissions import AllowAny
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 def _send_subscription_update(subscription):
-    """ Helper to send a real-time update via WebSocket. """
     try:
         channel_layer = get_channel_layer()
         if channel_layer:
@@ -29,16 +26,8 @@ def _send_subscription_update(subscription):
         print(f"Error sending channel update: {e}")
 
 def _update_subscription_from_stripe_object(subscription, stripe_sub):
-    """
-    Central helper to update the local DB from a Stripe subscription object.
-    This version is resilient to missing data from the Stripe API.
-    """
     subscription.stripe_subscription_id = stripe_sub.id
     subscription.status = stripe_sub.status
-    
-    # --- THIS IS THE BULLETPROOF FIX ---
-    # It safely checks every level of the object to prevent any crashes
-    # if the 'lookup_key' is missing from the Stripe event data.
     try:
         if stripe_sub.items.data:
             lookup_key = stripe_sub.items.data[0].price.lookup_key
@@ -46,42 +35,33 @@ def _update_subscription_from_stripe_object(subscription, stripe_sub):
                 subscription.plan = lookup_key
     except (AttributeError, IndexError, KeyError) as e:
         print(f"Could not update plan from lookup_key due to missing data: {e}")
-    # ---------------------------------
-
     subscription.trial_start = timezone.datetime.fromtimestamp(stripe_sub.trial_start) if stripe_sub.trial_start else None
     subscription.trial_end = timezone.datetime.fromtimestamp(stripe_sub.trial_end) if stripe_sub.trial_end else None
     subscription.current_period_end = timezone.datetime.fromtimestamp(stripe_sub.current_period_end) if stripe_sub.current_period_end else None
     subscription.canceled_at = timezone.datetime.fromtimestamp(stripe_sub.canceled_at) if stripe_sub.canceled_at else None
-    
     subscription.save()
     print(f"SUCCESS: Subscription {subscription.id} for user {subscription.user.id} updated to status '{subscription.status}'")
     _send_subscription_update(subscription)
 
 def handle_subscription_event(data_object):
-    """ A single, robust handler for ALL subscription-related webhook events. """
     subscription_id = None
-    customer_id = None
+    customer_id = data_object.get('customer')
 
-    if data_object.get('object') == 'checkout.session':
+    if data_object.get('object') in ['invoice', 'checkout.session']:
         subscription_id = data_object.get('subscription')
-        customer_id = data_object.get('customer')
-    else: # Handles invoice and subscription objects
-        subscription_id = data_object.get('subscription', data_object.get('id'))
-        customer_id = data_object.get('customer')
+    elif data_object.get('object') == 'subscription':
+        subscription_id = data_object.get('id')
 
     if not subscription_id or not customer_id:
         print(f"Webhook event (type: {data_object.get('object')}) is missing a required ID.")
         return
 
     try:
-        # We now ALWAYS find the subscription by customer ID first. This is guaranteed
-        # to exist in our database after the checkout session is created.
         subscription = Subscription.objects.get(stripe_customer_id=customer_id)
     except Subscription.DoesNotExist:
         print(f"CRITICAL: Webhook received for an unknown customer. Cus ID: {customer_id}")
         return
     
-    # ALWAYS fetch the latest subscription state directly from Stripe's API.
     stripe_sub = stripe.Subscription.retrieve(subscription_id)
     _update_subscription_from_stripe_object(subscription, stripe_sub)
 
