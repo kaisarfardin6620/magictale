@@ -1,7 +1,7 @@
 # subscriptions/webhooks.py
 
 import stripe
-import datetime  # <--- FIX 1: IMPORT DATETIME
+import datetime
 from django.conf import settings
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
@@ -39,30 +39,37 @@ def _update_subscription_from_stripe_object(subscription_model, stripe_sub_objec
     subscription_model.stripe_subscription_id = stripe_sub_object.id
     subscription_model.status = stripe_sub_object.status
     
-    # --- FIX 2: MORE ROBUST LOOKUP_KEY LOGIC ---
     try:
-        # Directly access the 'data' list from the 'items' object
         if 'items' in stripe_sub_object and 'data' in stripe_sub_object['items']:
             price = stripe_sub_object['items']['data'][0]['price']
             if 'lookup_key' in price and price['lookup_key']:
-                logger.info(f"Found lookup_key '{price['lookup_key']}' in Stripe. Setting as local plan.")
-                subscription_model.plan = price['lookup_key']
+                lookup_key = price['lookup_key']
+                logger.info(f"Found lookup_key '{lookup_key}' in Stripe. Setting as local plan.")
+                subscription_model.plan = lookup_key
             else:
                 logger.warning(f"Price object for {stripe_sub_object.id} did not have a lookup_key. Plan will not be updated.")
     except (AttributeError, IndexError, KeyError) as e:
         logger.warning(f"Could not get plan from lookup_key on subscription {stripe_sub_object.id}: {e}")
 
-    # --- FIX 1 (CONTINUED): USE datetime.timezone.utc ---
-    subscription_model.trial_start = datetime.datetime.fromtimestamp(stripe_sub_object.trial_start, tz=datetime.timezone.utc) if stripe_sub_object.trial_start else None
-    subscription_model.trial_end = datetime.datetime.fromtimestamp(stripe_sub_object.trial_end, tz=datetime.timezone.utc) if stripe_sub_object.trial_end else None
-    subscription_model.current_period_end = datetime.datetime.fromtimestamp(stripe_sub_object.current_period_end, tz=datetime.timezone.utc) if stripe_sub_object.current_period_end else None
-    subscription_model.canceled_at = datetime.datetime.fromtimestamp(stripe_sub_object.canceled_at, tz=datetime.timezone.utc) if stripe_sub_object.canceled_at else None
+    # --- THIS IS THE FINAL FIX ---
+    # Use getattr() to safely access attributes that might not exist on the Stripe object,
+    # preventing the AttributeError crash.
+    trial_start_ts = getattr(stripe_sub_object, 'trial_start', None)
+    trial_end_ts = getattr(stripe_sub_object, 'trial_end', None)
+    current_period_end_ts = getattr(stripe_sub_object, 'current_period_end', None)
+    canceled_at_ts = getattr(stripe_sub_object, 'canceled_at', None)
+
+    subscription_model.trial_start = datetime.datetime.fromtimestamp(trial_start_ts, tz=datetime.timezone.utc) if trial_start_ts else None
+    subscription_model.trial_end = datetime.datetime.fromtimestamp(trial_end_ts, tz=datetime.timezone.utc) if trial_end_ts else None
+    subscription_model.current_period_end = datetime.datetime.fromtimestamp(current_period_end_ts, tz=datetime.timezone.utc) if current_period_end_ts else None
+    subscription_model.canceled_at = datetime.datetime.fromtimestamp(canceled_at_ts, tz=datetime.timezone.utc) if canceled_at_ts else None
     
     try:
         subscription_model.save()
         logger.info(f"SUCCESS: Subscription {subscription_model.id} for user {subscription_model.user.id} updated to status '{subscription_model.status}'")
     except Exception as e:
-        logger.error(f"DATABASE SAVE FAILED for subscription {subscription_model.id}. Error: {e}")
+        # If this fails, it's almost certainly a ValidationError because the lookup_key in Stripe doesn't match a plan choice in models.py
+        logger.error(f"DATABASE SAVE FAILED for subscription {subscription_model.id}. CHECK LOOKUP_KEY CASE. Error: {e}")
         raise e
 
     _send_subscription_update(subscription_model)
