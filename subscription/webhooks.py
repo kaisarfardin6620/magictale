@@ -45,25 +45,25 @@ def _update_subscription_from_stripe_object(subscription, stripe_sub):
 
 def handle_subscription_event(data_object):
     customer_id = data_object.get('customer')
-    subscription_id = data_object.get('subscription', data_object.get('id'))
+    subscription_id = None
 
-    if not customer_id:
-        print(f"Webhook event (type: {data_object.get('object')}) is missing a customer ID.")
-        return # Cannot proceed without a customer ID
+    object_type = data_object.get('object')
+    if object_type == 'checkout.session':
+        subscription_id = data_object.get('subscription')
+    elif object_type == 'invoice':
+        subscription_id = data_object.get('subscription')
+    elif object_type == 'subscription':
+        subscription_id = data_object.get('id')
+
+    if not customer_id or not subscription_id:
+        print(f"Webhook event (type: {object_type}) is missing a required ID. Customer: {customer_id}, Subscription: {subscription_id}")
+        return
 
     try:
         subscription = Subscription.objects.get(stripe_customer_id=customer_id)
     except Subscription.DoesNotExist:
         print(f"CRITICAL: Webhook received for an unknown customer. Cus ID: {customer_id}")
         return
-    
-    if not subscription_id:
-        subscription_id = subscription.stripe_subscription_id
-    
-    if not subscription_id:
-        print(f"Could not determine subscription ID for customer {customer_id}.")
-        return
-
     stripe_sub = stripe.Subscription.retrieve(subscription_id)
     _update_subscription_from_stripe_object(subscription, stripe_sub)
 
