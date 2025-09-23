@@ -28,7 +28,10 @@ def _send_subscription_update(subscription):
 def _update_subscription_from_stripe_object(subscription, stripe_sub):
     subscription.stripe_subscription_id = stripe_sub.id
     subscription.status = stripe_sub.status
-    subscription.plan = stripe_sub.items.data[0].price.lookup_key if stripe_sub.items.data else subscription.plan
+    
+    if stripe_sub.items.data and hasattr(stripe_sub.items.data[0].price, 'lookup_key') and stripe_sub.items.data[0].price.lookup_key:
+        subscription.plan = stripe_sub.items.data[0].price.lookup_key
+    
     subscription.trial_start = timezone.datetime.fromtimestamp(stripe_sub.trial_start) if stripe_sub.trial_start else None
     subscription.trial_end = timezone.datetime.fromtimestamp(stripe_sub.trial_end) if stripe_sub.trial_end else None
     subscription.current_period_end = timezone.datetime.fromtimestamp(stripe_sub.current_period_end) if stripe_sub.current_period_end else None
@@ -54,7 +57,7 @@ def handle_subscription_event(data_object):
     
     if not subscription_id:
         print(f"Webhook event of type {data_object.get('object')} is missing a subscription ID.")
-        return 
+        return
 
     try:
         subscription = Subscription.objects.get(stripe_subscription_id=subscription_id)
