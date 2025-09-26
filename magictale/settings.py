@@ -13,9 +13,11 @@ if not SECRET_KEY:
     raise ValueError("A SECRET_KEY must be set in the .env file")
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
-# --- Host and CORS/CSRF Configuration ---
+# --- HOSTING & SECURITY ---
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',')
 CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:3000').split(',')
+CORS_ALLOWED_ORIGINS = CSRF_TRUSTED_ORIGINS # Makes CORS config simpler, uses the same list.
+CORS_ALLOW_CREDENTIALS = True
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
 
 # --- Application Definition ---
@@ -37,8 +39,8 @@ INSTALLED_APPS = [
     'allauth.account',
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
-    'storages',  
-    'fcm_django', 
+    'storages',
+    'fcm_django',
     'authentication',
     'ai',
     'subscription',
@@ -50,7 +52,7 @@ SITE_ID = 1
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'corsheaders.middleware.CorsMiddleware', # Should be high up
+    'corsheaders.middleware.CorsMiddleware', # Must be high up
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -100,7 +102,7 @@ if USE_S3_STORAGE:
 else:
     # --- Local Storage Configuration ---
     MEDIA_URL = '/media/'
-    MEDIA_ROOT = BASE_DIR / 'media'
+    MEDIA_ROOT = '/app/media' # More direct path for Docker volume mount
 
 # --- Templates ---
 TEMPLATES = [
@@ -123,10 +125,10 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_CLASSES': ['rest_framework.throttling.AnonRateThrottle', 'rest_framework.throttling.UserRateThrottle'],
     'DEFAULT_THROTTLE_RATES': {'anon': '100/day', 'user': '1000/day'},
     'DEFAULT_RENDERER_CLASSES': [
-        'magictale.api.renderers.CustomJSONRenderer',
-        'rest_framework.renderers.BrowsableAPIRenderer', # Good for development
+        'magictale.api.renderers.CustomJSONRenderer', # Make sure this path is correct for your project
+        'rest_framework.renderers.BrowsableAPIRenderer',
     ],
-    'EXCEPTION_HANDLER': 'magictale.api.exceptions.custom_exception_handler',
+    'EXCEPTION_HANDLER': 'magictale.api.exceptions.custom_exception_handler', # Make sure this path is correct
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
 }
@@ -139,7 +141,6 @@ SIMPLE_JWT = {
     'ALGORITHM': 'HS256',
     'SIGNING_KEY': SECRET_KEY,
 }
-CORS_ALLOW_CREDENTIALS = True
 
 # --- Email Settings ---
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
@@ -184,7 +185,7 @@ SOCIALACCOUNT_PROVIDERS = {
 # --- FCM Push Notifications ---
 FCM_DJANGO_SETTINGS = {
     "APP_VERBOSE_NAME": "MagicTale",
-    "FCM_SERVER_KEY": os.getenv('FCM_SERVER_KEY_LEGACY'), 
+    "FCM_SERVER_KEY": os.getenv('FCM_SERVER_KEY_LEGACY'),
     "ONE_DEVICE_PER_USER": False,
     "DELETE_INACTIVE_DEVICES": True,
     "FCM_CREDENTIALS": os.getenv('FIREBASE_SERVICE_ACCOUNT_PATH'),
@@ -194,5 +195,5 @@ FCM_DJANGO_SETTINGS = {
 AI_TEXT_MODEL, AI_IMAGE_MODEL, AI_AUDIO_MODEL = os.getenv("AI_TEXT_MODEL", "gpt-4o-mini"), os.getenv("AI_IMAGE_MODEL", "dall-e-3"), os.getenv("AI_AUDIO_MODEL", "tts-1")
 
 
-# magictale/settings.py
+# --- Custom Project Settings ---
 BACKEND_BASE_URL = os.getenv('BACKEND_BASE_URL', 'http://127.0.0.1:8001')
