@@ -78,16 +78,21 @@ class MyTokenObtainPairSerializer(serializers.Serializer):
         user = authenticate(request=self.context.get('request'), username=user_obj.username, password=password)
         if not user:
             raise serializers.ValidationError('No active account found with the given credentials')
+        
         refresh = RefreshToken.for_user(user)
         access_token = refresh.access_token
+
+        access_token['is_staff'] = user.is_staff
+
         access_token['username'] = user.username
         try:
             subscription = user.subscription
             access_token['plan'] = subscription.plan
             access_token['subscription_status'] = subscription.status
-        except AttributeError:
+        except (AttributeError, User.subscription.RelatedObjectDoesNotExist):
             access_token['plan'] = None
             access_token['subscription_status'] = 'inactive'
+            
         data = {'refresh': str(refresh), 'access': str(access_token)}
         return data
 
@@ -95,7 +100,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     subscription_active = serializers.SerializerMethodField()
     current_plan = serializers.SerializerMethodField()
     trial_end_date = serializers.SerializerMethodField()
-    profile_picture = serializers.SerializerMethodField() 
+    profile_picture = serializers.SerializerMethodField()
 
     class Meta:
         model = UserProfile
@@ -128,13 +133,13 @@ class ProfileSerializer(serializers.ModelSerializer):
             return None
 
 class UnifiedProfileUpdateSerializer(serializers.Serializer):
-    user_name = serializers.CharField(max_length=301, required=False) 
+    user_name = serializers.CharField(max_length=301, required=False)
     first_name = serializers.CharField(max_length=150, required=False)
     last_name = serializers.CharField(max_length=150, required=False)
     new_email = serializers.EmailField(required=False, write_only=True)
     current_password = serializers.CharField(style={'input_type': 'password'}, write_only=True, required=False)
     new_password = serializers.CharField(style={'input_type': 'password'}, write_only=True, required=False, validators=[PasswordValidator.validate_password_strength])
-    confirm_new_password = serializers.CharField(style={'input_type': 'password'}, write_only=True, required=False) 
+    confirm_new_password = serializers.CharField(style={'input_type': 'password'}, write_only=True, required=False)
     profile_picture = serializers.ImageField(required=False, allow_null=True)
     phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
     allow_push_notifications = serializers.BooleanField(required=False)
@@ -154,18 +159,18 @@ class UnifiedProfileUpdateSerializer(serializers.Serializer):
     def validate(self, data):
         if 'new_password' in data and 'current_password' not in data:
             raise serializers.ValidationError({"current_password": "You must provide your current password to set a new one."})
-            
+
         if 'new_password' in data and 'confirm_new_password' in data:
             if data['new_password'] != data['confirm_new_password']:
                 raise serializers.ValidationError({"confirm_new_password": "The two new password fields didn't match."})
         elif 'new_password' in data:
              raise serializers.ValidationError({"confirm_new_password": "You must confirm your new password."})
-        
+
         if 'new_password' in data and 'current_password' in data:
             user = self.context['request'].user
             if check_password(data['new_password'], user.password):
                 raise serializers.ValidationError({"new_password": "New password cannot be the same as the old password."})
-        
+
         return data
 
     def update(self, instance, validated_data):
@@ -185,12 +190,12 @@ class UnifiedProfileUpdateSerializer(serializers.Serializer):
         if new_email and new_email.lower() != user.email.lower():
             user.email = new_email
             user.username = new_email
-        
+
         if 'new_password' in validated_data and 'current_password' in validated_data:
             user.set_password(validated_data['new_password'])
             PasswordHistory.objects.create(user=user, password_hash=user.password)
             OutstandingToken.objects.filter(user=user).delete()
-        
+
         user.save()
 
         profile.phone_number = validated_data.get('phone_number', profile.phone_number)
