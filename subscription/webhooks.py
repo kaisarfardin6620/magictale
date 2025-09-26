@@ -4,7 +4,7 @@ from django.conf import settings
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
-from .models import Subscription
+from .models import Subscription, ProcessedStripeEvent 
 from .serializers import SubscriptionSerializer
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -33,10 +33,8 @@ def _send_subscription_update(subscription):
 
 def _update_subscription_from_stripe_object(subscription_model, stripe_sub_object):
     logger.info(f"Starting database update for local subscription ID {subscription_model.id} from Stripe sub {stripe_sub_object.id}")
-    
     subscription_model.stripe_subscription_id = stripe_sub_object.id
     subscription_model.status = stripe_sub_object.status
-    
     try:
         if 'items' in stripe_sub_object and 'data' in stripe_sub_object['items']:
             price = stripe_sub_object['items']['data'][0]['price']
@@ -49,8 +47,6 @@ def _update_subscription_from_stripe_object(subscription_model, stripe_sub_objec
     except (AttributeError, IndexError, KeyError) as e:
         logger.warning(f"Could not get plan from lookup_key on subscription {stripe_sub_object.id}: {e}")
 
-    # Use getattr() to safely access attributes that might not exist on the Stripe object,
-    # preventing the AttributeError crash.
     trial_start_ts = getattr(stripe_sub_object, 'trial_start', None)
     trial_end_ts = getattr(stripe_sub_object, 'trial_end', None)
     current_period_end_ts = getattr(stripe_sub_object, 'current_period_end', None)
@@ -60,7 +56,6 @@ def _update_subscription_from_stripe_object(subscription_model, stripe_sub_objec
     subscription_model.trial_end = datetime.datetime.fromtimestamp(trial_end_ts, tz=datetime.timezone.utc) if trial_end_ts else None
     subscription_model.current_period_end = datetime.datetime.fromtimestamp(current_period_end_ts, tz=datetime.timezone.utc) if current_period_end_ts else None
     subscription_model.canceled_at = datetime.datetime.fromtimestamp(canceled_at_ts, tz=datetime.timezone.utc) if canceled_at_ts else None
-    
     try:
         subscription_model.save()
         logger.info(f"SUCCESS: Subscription {subscription_model.id} for user {subscription_model.user.id} updated to status '{subscription_model.status}'")
@@ -93,7 +88,7 @@ def handle_subscription_event(data_object):
         logger.info(f"Fetching full subscription object for '{subscription_id}' from Stripe API...")
         stripe_sub = stripe.Subscription.retrieve(subscription_id)
         logger.info(f"Successfully fetched Stripe subscription object. Status: '{stripe_sub.status}'")
-        
+
         subscription_model = None
         try:
             subscription_model = Subscription.objects.get(stripe_subscription_id=stripe_sub.id)
@@ -136,22 +131,27 @@ def stripe_webhook(request):
     payload = request.body
     sig_header = request.META.get("HTTP_STRIPE_SIGNATURE")
     endpoint_secret = settings.STRIPE_WEBHOOK_SECRET
-    
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, secret=endpoint_secret)
     except (ValueError, stripe.error.SignatureVerificationError) as e:
         logger.error(f"Webhook signature verification failed. Error: {e}")
         return HttpResponseBadRequest(f"Webhook error: {e}")
-    
+
+    event_id = event.get('id')
+    if event_id and ProcessedStripeEvent.objects.filter(event_id=event_id).exists():
+        logger.info(f"Webhook event {event_id} has already been processed. Ignoring.")
+        return HttpResponse(status=200)
+
     logger.info(f"Received valid Stripe event: '{event['type']}' (ID: {event.get('id')})")
-    
     handler = EVENT_HANDLER_MAP.get(event["type"])
     if handler:
         try:
             handler(event["data"]["object"])
+            if event_id:
+                ProcessedStripeEvent.objects.create(event_id=event_id)
         except Exception as e:
             logger.critical(f"FATAL ERROR processing webhook {event.get('id', 'unknown')}: {e}\n{traceback.format_exc()}")
     else:
         logger.warning(f"Unhandled event type: '{event['type']}'")
-        
+
     return HttpResponse(status=200)

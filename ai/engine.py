@@ -8,16 +8,26 @@ from asgiref.sync import sync_to_async
 from channels.layers import get_channel_layer
 from django.conf import settings
 from openai import OpenAI
-
+from django.db.models import Model
 from .models import StoryProject, StoryPage, GenerationEvent
 
 client = OpenAI(api_key=getattr(settings, "OPENAI_API_KEY", None))
 
 
 @sync_to_async
-def _reload_project(project_id: int) -> StoryProject:
-    """Fetches the project and related user/onboarding data from the database."""
-    return StoryProject.objects.select_related("user").get(pk=project_id)
+def _reload_project(project_id: int) -> StoryProject | None:
+    """
+    Fetches the project and related user/onboarding data from the database.
+    Uses .filter().first() for safe retrieval to prevent DoesNotExist exception.
+    """
+    return StoryProject.objects.select_related("user").filter(pk=project_id).first()
+
+@sync_to_async
+def _get_project_status(project_id: int) -> str | None:
+    """Fetches only the status of a project from the DB for cancellation checks."""
+    # .only('status') is a performance optimization.
+    project = StoryProject.objects.filter(pk=project_id).only('status').first()
+    return project.status if project else None
 
 @sync_to_async
 def _save_event(project: StoryProject, kind: str, payload: dict):
@@ -64,7 +74,6 @@ async def _send(project_id: int, event: dict):
     await layer.group_send(f"story_{project_id}", {"type": "progress", "event": event})
 
 
-# --- AI Prompt Builders ---
 
 def _build_story_prompt(project: StoryProject) -> str:
     """Builds the main text prompt for the story."""
@@ -80,7 +89,7 @@ Return the story as 8 short scenes separated with this exact delimiter line:
 
 --- PAGE ---
 
-Keep each page to 2-5 short sentences. Do not write the page numbers.
+Keep each page to 4-7 sentences. This is important for the story's pacing and detail. Do not write the page numbers.
 """
 
 def _build_synopsis_prompt(story_text: str) -> str:
@@ -138,7 +147,7 @@ def _generate_and_save_image(page: StoryPage, project: StoryProject):
 def _generate_and_save_audio(page: StoryPage, project: StoryProject):
     try:
         response = client.audio.speech.create(
-            model=settings.AI_AUDIO_MODEL,  
+            model=settings.AI_AUDIO_MODEL,
             voice=project.voice or "alloy",
             input=page.text,
             timeout=60.0,
@@ -155,6 +164,11 @@ def _generate_and_save_audio(page: StoryPage, project: StoryProject):
 
 async def run_generation_async(project_id: int):
     project = await _reload_project(project_id)
+
+    if project is None:
+        print(f"Project ID {project_id} does not exist or was deleted. Task skipped gracefully.")
+        return
+
     await _save_event(project, "start", {"status": project.status})
     await _send(project_id, {"status": "running", "progress": project.progress})
 
@@ -166,7 +180,7 @@ async def run_generation_async(project_id: int):
 
         resp = await asyncio.to_thread(
             client.chat.completions.create,
-            model=project.model_used or settings.AI_TEXT_MODEL,  
+            model=project.model_used or settings.AI_TEXT_MODEL,
             messages=[
                 {"role": "system", "content": "You are a helpful and creative storyteller for children."},
                 {"role": "user", "content": prompt}
@@ -185,6 +199,12 @@ async def run_generation_async(project_id: int):
         await _save_event(project, "pages_built", {"count": len(pages_text)})
         await _update_progress(project, progress=60)
 
+        current_status = await _get_project_status(project_id)
+        if current_status == StoryProject.Status.CANCELED:
+            print(f"Task for project {project_id} canceled by user. Halting execution.")
+            await _save_event(project, "canceled", {"message": "Generation halted by user."})
+            return  
+
         await _send(project_id, {"message": f"Creating {len(pages_text)} pages of art and audio...", "progress": 65})
         project_pages = await sync_to_async(list)(project.pages.all())
         multimedia_tasks = []
@@ -194,17 +214,17 @@ async def run_generation_async(project_id: int):
         await asyncio.gather(*multimedia_tasks)
         await _save_event(project, "multimedia_done", {})
         await _update_progress(project, progress=90)
-        
+
         await _send(project_id, {"message": "Adding the finishing touches...", "progress": 91})
         synopsis_prompt = _build_synopsis_prompt(content)
         synopsis_resp = await asyncio.to_thread(
             client.chat.completions.create,
-            model=settings.AI_TEXT_MODEL,  
+            model=settings.AI_TEXT_MODEL,
             messages=[{"role": "user", "content": synopsis_prompt}],
             response_format={"type": "json_object"},
             temperature=0.5,
         )
-        
+
         try:
             extra_data = json.loads(synopsis_resp.choices[0].message.content)
         except (json.JSONDecodeError, IndexError, TypeError):
@@ -213,7 +233,7 @@ async def run_generation_async(project_id: int):
         first_page = await sync_to_async(project.pages.order_by('index').first)()
         cover_image_url = first_page.image_url if first_page else ""
         extra_data['cover_image_url'] = cover_image_url
-        
+
         await _save_project_fields(project, extra_data)
         await _save_event(project, "metadata_generated", extra_data)
         await _update_progress(project, progress=95)

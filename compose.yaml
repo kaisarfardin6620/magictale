@@ -17,6 +17,22 @@ services:
     networks:
       - backend
 
+  celery-worker:
+    build:
+      context: .
+    container_name: celery-worker
+    restart: unless-stopped
+    init: true
+    env_file: ./.env
+    command: ["celery", "-A", "magictale", "worker", "--loglevel=info"]
+    volumes:
+      - media_volume:/app/media
+    depends_on:
+      - postgres-db
+      - redis-cache
+    networks:
+      - backend
+
   nginx:
     image: nginx:alpine
     container_name: nginx

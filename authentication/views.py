@@ -44,7 +44,6 @@ class SignupAPIView(APIView):
             user = serializer.save()
             UserActivityLog.objects.create(user=user, activity_type='signup', ip_address=get_client_ip(request))
             token = AuthToken.objects.create(user=user, token_type='email_verification')
-            
             verification_path = reverse('email_verification') + f'?token={token.token}'
             verification_url = f"{settings.BACKEND_BASE_URL}{verification_path}"
 
@@ -91,7 +90,6 @@ class ResendVerificationEmailAPIView(APIView):
                     return Response({'detail': 'This account is already active.'}, status=status.HTTP_400_BAD_REQUEST)
                 AuthToken.objects.filter(user=user, token_type='email_verification', is_used=False).delete()
                 token = AuthToken.objects.create(user=user, token_type='email_verification')
-                
                 verification_path = reverse('email_verification') + f'?token={token.token}'
                 verification_url = f"{settings.BACKEND_BASE_URL}{verification_path}"
 
@@ -137,10 +135,8 @@ class PasswordResetInitiateAPIView(APIView):
                 user = User.objects.get(email=email)
                 AuthToken.objects.filter(user=user, token_type='password_reset').delete()
                 token = AuthToken.objects.create(user=user, token_type='password_reset')
-                
                 reset_path = reverse('password_reset_confirm', kwargs={'token': token.token})
                 reset_url = f"{settings.BACKEND_BASE_URL}{reset_path}"
-                
                 send_email('Password Reset Request', f'Click to reset: {reset_url}', [user.email])
             except User.DoesNotExist:
                 pass
@@ -210,7 +206,6 @@ class LanguagePreferenceView(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
 class GoogleLoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -221,21 +216,39 @@ class GoogleLoginView(APIView):
 
         try:
             adapter = GoogleOAuth2Adapter(request)
-            client = OAuth2Client(request, adapter.get_provider().get_app(request))
-            token_data = client.get_access_token(access_token)
-            login = adapter.complete_login(request, adapter.get_provider().get_app(request), token_data)
+            app = adapter.get_provider().get_app(request)
+            client = OAuth2Client(
+                request,
+                app.client_id,
+                app.secret,
+                adapter.access_token_method,
+                adapter.access_token_url,
+                adapter.callback_url,
+                adapter.scope,
+            )
+            social_token = client.parse_token({"access_token": access_token})
+            social_token.app = app
+            login = adapter.complete_login(request, app, social_token)
             login.state = {} 
             login.save(request)
             user = login.user
             refresh = RefreshToken.for_user(user)
-            token_serializer = MyTokenObtainPairSerializer(data={'email': user.email, 'password': 'google_authenticated'})
-            token_serializer.context['request'] = request
-            token_serializer.is_valid() 
-            access_token_with_claims = token_serializer.get_token(user)
+
+            access_token_obj = refresh.access_token
+            access_token_obj['username'] = user.username
+            try:
+                subscription = user.subscription
+                access_token_obj['plan'] = subscription.plan
+                access_token_obj['subscription_status'] = subscription.status
+            except (AttributeError, User.subscription.RelatedObjectDoesNotExist):
+                access_token_obj['plan'] = None
+                access_token_obj['subscription_status'] = 'inactive'
+            
             return Response({
                 'refresh': str(refresh),
-                'access': str(access_token_with_claims)
+                'access': str(access_token_obj)
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
-            return Response({"detail": f"An error occurred during Google authentication: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+            print(f"Google authentication error: {e}")
+            return Response({"detail": f"An error occurred during Google authentication. Please try again."}, status=status.HTTP_400_BAD_REQUEST)

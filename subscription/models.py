@@ -24,3 +24,9 @@ class Subscription(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.plan} ({self.status})"
+class ProcessedStripeEvent(models.Model):
+    event_id = models.CharField(max_length=255, unique=True)
+    processed_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.event_id
