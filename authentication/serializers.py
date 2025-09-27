@@ -111,6 +111,8 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     def get_profile_picture(self, obj):
         if obj.profile_picture and hasattr(obj.profile_picture, 'url'):
+            if settings.USE_S3_STORAGE:
+                return obj.profile_picture.url
             return f"{settings.BACKEND_BASE_URL}{obj.profile_picture.url}"
         return None
 

@@ -14,9 +14,9 @@ if not SECRET_KEY:
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
 # --- HOSTING & SECURITY ---
-ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS', '').split(',')]
+ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',')]
 CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:3000').split(',')
-CORS_ALLOWED_ORIGINS = CSRF_TRUSTED_ORIGINS # Makes CORS config simpler, uses the same list.
+CORS_ALLOWED_ORIGINS = CSRF_TRUSTED_ORIGINS
 CORS_ALLOW_CREDENTIALS = True
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
 
@@ -52,7 +52,7 @@ SITE_ID = 1
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'corsheaders.middleware.CorsMiddleware', # Must be high up
+    'corsheaders.middleware.CorsMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -87,8 +87,11 @@ USE_S3_STORAGE = os.getenv('USE_S3_STORAGE', 'False').lower() == 'true'
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+# Define local storage defaults first. These will be overridden if S3 is enabled.
+MEDIA_URL = '/media/'
+MEDIA_ROOT = '/app/media' 
+
 if USE_S3_STORAGE:
-    # --- S3 Storage Configuration ---
     DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
     AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
     AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME')
@@ -96,13 +99,9 @@ if USE_S3_STORAGE:
     AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
     AWS_S3_ADDRESSING_STYLE = "virtual"
     AWS_S3_SIGNATURE_VERSION = 's3v4'
-    AWS_QUERYSTRING_AUTH = True
-    AWS_QUERYSTRING_EXPIRE = 3600
+    AWS_QUERYSTRING_AUTH = True 
+    AWS_QUERYSTRING_EXPIRE = 3600 
     MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/'
-else:
-    # --- Local Storage Configuration ---
-    MEDIA_URL = '/media/'
-    MEDIA_ROOT = '/app/media' # More direct path for Docker volume mount
 
 # --- Templates ---
 TEMPLATES = [
@@ -125,10 +124,10 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_CLASSES': ['rest_framework.throttling.AnonRateThrottle', 'rest_framework.throttling.UserRateThrottle'],
     'DEFAULT_THROTTLE_RATES': {'anon': '100/day', 'user': '1000/day'},
     'DEFAULT_RENDERER_CLASSES': [
-        'magictale.api.renderers.CustomJSONRenderer', # Make sure this path is correct for your project
+        'magictale.api.renderers.CustomJSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
     ],
-    'EXCEPTION_HANDLER': 'magictale.api.exceptions.custom_exception_handler', # Make sure this path is correct
+    'EXCEPTION_HANDLER': 'magictale.api.exceptions.custom_exception_handler',
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
 }

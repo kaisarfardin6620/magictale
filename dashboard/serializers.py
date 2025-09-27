@@ -5,7 +5,6 @@ from .models import SiteSettings
 from django.conf import settings
 import stripe
 
-# Set the API key for Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 class UserForAdminSerializer(serializers.ModelSerializer):
@@ -17,7 +16,9 @@ class UserForAdminSerializer(serializers.ModelSerializer):
         fields = ['id', 'full_name', 'email', 'profile_picture_url']
 
     def get_profile_picture_url(self, obj):
-        if hasattr(obj, 'profile') and obj.profile.profile_picture:
+        if hasattr(obj, 'profile') and obj.profile.profile_picture and hasattr(obj.profile.profile_picture, 'url'):
+            if settings.USE_S3_STORAGE:
+                return obj.profile.profile_picture.url
             return f"{settings.BACKEND_BASE_URL}{obj.profile.profile_picture.url}"
         return None
 
@@ -25,26 +26,18 @@ class SubscriptionManagementSerializer(serializers.ModelSerializer):
     user = UserForAdminSerializer(read_only=True)
     plan_display = serializers.CharField(source='get_plan_display')
     payment_method = serializers.SerializerMethodField()
-    renewal_date = serializers.SerializerMethodField() # <-- ADD THIS LINE
+    renewal_date = serializers.SerializerMethodField()
 
     class Meta:
         model = Subscription
-        # ADD 'renewal_date' and REMOVE the old date fields for clarity
         fields = ['id', 'user', 'plan_display', 'status', 'renewal_date', 'payment_method']
 
-    # ADD THIS ENTIRE METHOD
     def get_renewal_date(self, obj):
-        """
-        Returns the correct renewal/expiration date based on the subscription status.
-        """
         if obj.status == 'trialing':
             return obj.trial_end
         return obj.current_period_end
 
     def get_payment_method(self, obj):
-        """
-        Fetches the default payment method from Stripe for the customer.
-        """
         if not obj.stripe_customer_id:
             return "Not available"
         try:
@@ -72,5 +65,7 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
 
     def get_application_logo_url(self, obj):
         if obj.application_logo and hasattr(obj.application_logo, 'url'):
+            if settings.USE_S3_STORAGE:
+                return obj.application_logo.url
             return f"{settings.BACKEND_BASE_URL}{obj.application_logo.url}"
         return None

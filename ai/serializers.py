@@ -17,7 +17,9 @@ class StoryPageSerializer(serializers.ModelSerializer):
         return None
     
     def get_audio_url(self, obj):
-        if obj.audio_url:
+        if obj.audio_url and hasattr(obj, 'audio_url'):
+            if settings.USE_S3_STORAGE:
+                return obj.audio_url
             return f"{settings.BACKEND_BASE_URL}{obj.audio_url}"
         return None
 
