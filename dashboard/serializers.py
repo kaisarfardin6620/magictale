@@ -3,6 +3,10 @@ from django.contrib.auth.models import User
 from subscription.models import Subscription
 from .models import SiteSettings
 from django.conf import settings
+import stripe
+
+# Set the API key for Stripe
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
 class UserForAdminSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source='get_full_name')
@@ -20,10 +24,42 @@ class UserForAdminSerializer(serializers.ModelSerializer):
 class SubscriptionManagementSerializer(serializers.ModelSerializer):
     user = UserForAdminSerializer(read_only=True)
     plan_display = serializers.CharField(source='get_plan_display')
+    payment_method = serializers.SerializerMethodField()
+    renewal_date = serializers.SerializerMethodField() # <-- ADD THIS LINE
 
     class Meta:
         model = Subscription
-        fields = ['id', 'user', 'plan', 'plan_display', 'status', 'current_period_end', 'trial_end']
+        # ADD 'renewal_date' and REMOVE the old date fields for clarity
+        fields = ['id', 'user', 'plan_display', 'status', 'renewal_date', 'payment_method']
+
+    # ADD THIS ENTIRE METHOD
+    def get_renewal_date(self, obj):
+        """
+        Returns the correct renewal/expiration date based on the subscription status.
+        """
+        if obj.status == 'trialing':
+            return obj.trial_end
+        return obj.current_period_end
+
+    def get_payment_method(self, obj):
+        """
+        Fetches the default payment method from Stripe for the customer.
+        """
+        if not obj.stripe_customer_id:
+            return "Not available"
+        try:
+            payment_methods = stripe.PaymentMethod.list(
+                customer=obj.stripe_customer_id,
+                type="card",
+            )
+            if not payment_methods.data:
+                return "No card on file"
+            
+            card = payment_methods.data[0].card
+            return f"{card.brand.title()} ****{card.last4}"
+        except Exception:
+            return "Could not retrieve"
+
 
 class SiteSettingsSerializer(serializers.ModelSerializer):
     application_logo_url = serializers.SerializerMethodField()

@@ -1,23 +1,18 @@
-# dashboard/views.py
-
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
 from rest_framework import generics, filters
 from django_filters.rest_framework import DjangoFilterBackend
-
 from django.contrib.auth.models import User
 from subscription.models import Subscription
 from ai.models import StoryProject
 from .models import SiteSettings
 from .serializers import SubscriptionManagementSerializer, SiteSettingsSerializer
-
 from datetime import timedelta
 from django.utils import timezone
 from django.db.models import Count
 from django.db.models.functions import TruncMonth
 
-# --- View for the Main Dashboard Page ---
 class DashboardStatsAPIView(APIView):
     permission_classes = [IsAdminUser]
 
@@ -66,53 +61,67 @@ class DashboardStatsAPIView(APIView):
             return 100.0 if new > 0 else 0.0
         return round((new / old) * 100, 2)
 
-# --- View for the Subscription Management Page ---
 class SubscriptionManagementView(generics.ListAPIView):
     permission_classes = [IsAdminUser]
-    serializer_class = SubscriptionManagementSerializer
+    serializer_class = SubscriptionManagementSerializer 
     queryset = Subscription.objects.select_related('user', 'user__profile').order_by('-id')
     
-    # These backends enable the dropdown filters and search bar
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['plan', 'status']
     search_fields = ['user__first_name', 'user__last_name', 'user__email']
     
-    # NOTE: Pagination is handled automatically by the 'PAGE_SIZE' setting in settings.py
+    def _calculate_change(self, old, new):
+        if old <= 0:
+            return 100.0 if new > 0 else 0.0
+        return round(((new - old) / old) * 100, 2)
 
     def list(self, request, *args, **kwargs):
-        """
-        Overrides the default list method to add the top-level card stats to the response.
-        """
         all_subscriptions = Subscription.objects.all()
+        now = timezone.now()
+        last_30_days_start = now - timedelta(days=30)
+        prev_30_days_start = now - timedelta(days=60)
+
         total_subscribers = all_subscriptions.count()
+        new_subs_last_30 = all_subscriptions.filter(trial_start__gte=last_30_days_start).count()
+        new_subs_prev_30 = all_subscriptions.filter(trial_start__gte=prev_30_days_start, trial_start__lt=last_30_days_start).count()
+        total_subscribers_change = self._calculate_change(new_subs_prev_30, new_subs_last_30)
+
         trials_active = all_subscriptions.filter(status='trialing').count()
-        canceled_subscriptions = all_subscriptions.filter(status='canceled').count()
-        
         expiring_this_week = all_subscriptions.filter(
             status='trialing',
-            trial_end__lte=timezone.now() + timedelta(days=7),
-            trial_end__gte=timezone.now()
+            trial_end__lte=now + timedelta(days=7),
+            trial_end__gte=now
         ).count()
         
+        canceled_subscriptions = all_subscriptions.filter(status='canceled').count()
+        canceled_last_30 = all_subscriptions.filter(canceled_at__gte=last_30_days_start).count()
+        canceled_prev_30 = all_subscriptions.filter(canceled_at__gte=prev_30_days_start, canceled_at__lt=last_30_days_start).count()
+        canceled_subscriptions_change = self._calculate_change(canceled_prev_30, canceled_last_30)
+
         stats = {
-            'total_subscribers': total_subscribers,
-            'trials_active': trials_active,
-            'canceled_subscriptions': canceled_subscriptions,
-            'expiring_this_week': expiring_this_week,
+            'total_subscribers': {
+                'value': total_subscribers,
+                'change': total_subscribers_change
+            },
+            'trials_active': {
+                'value': trials_active,
+                'expiring_this_week': expiring_this_week
+            },
+            'canceled_subscriptions': {
+                'value': canceled_subscriptions,
+                'change': canceled_subscriptions_change
+            }
         }
 
-        # The parent 'list' method handles the filtering, searching, and pagination
         paginated_response = super().list(request, *args, **kwargs)
         
-        # We combine our custom stats with the standard paginated response
         combined_data = {
             'stats': stats,
-            **paginated_response.data 
+            **paginated_response.data
         }
         
         return Response(combined_data)
 
-# --- Views for the Analytics & Reports Page ---
 class AnalyticsAPIView(APIView):
     permission_classes = [IsAdminUser]
 
@@ -139,7 +148,6 @@ class AnalyticsAPIView(APIView):
         }
         return Response(data)
 
-# --- View for the Admin Settings Page ---
 class SiteSettingsView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAdminUser]
     serializer_class = SiteSettingsSerializer

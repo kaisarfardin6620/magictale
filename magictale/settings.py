@@ -14,7 +14,7 @@ if not SECRET_KEY:
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
 # --- HOSTING & SECURITY ---
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',')
+ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS', '').split(',')]
 CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:3000').split(',')
 CORS_ALLOWED_ORIGINS = CSRF_TRUSTED_ORIGINS # Makes CORS config simpler, uses the same list.
 CORS_ALLOW_CREDENTIALS = True
