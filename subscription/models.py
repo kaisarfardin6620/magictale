@@ -3,6 +3,7 @@ from django.db import models
 
 class Subscription(models.Model):
     PLAN_CHOICES = [
+        ("trial", "Trial Period"),
         ("creator", "Story Creator"),
         ("master", "Story Master"),
     ]
@@ -12,7 +13,7 @@ class Subscription(models.Model):
         on_delete=models.CASCADE,
         related_name="subscription"
     )
-    stripe_customer_id = models.CharField(max_length=255)
+    stripe_customer_id = models.CharField(max_length=255, blank=True, null=True) # Made blank/null for trial
     stripe_subscription_id = models.CharField(max_length=255, blank=True, null=True)
 
     plan = models.CharField(max_length=20, choices=PLAN_CHOICES)
@@ -24,6 +25,7 @@ class Subscription(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.plan} ({self.status})"
+
 class ProcessedStripeEvent(models.Model):
     event_id = models.CharField(max_length=255, unique=True)
     processed_at = models.DateTimeField(auto_now_add=True)

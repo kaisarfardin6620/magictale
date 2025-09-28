@@ -14,7 +14,7 @@ from .serializers import (
     StoryProjectDetailSerializer,
 )
 from .tasks import run_generation_task
-from authentication.permissions import HasActiveSubscription, IsOwner
+from authentication.permissions import HasActiveSubscription, IsOwner, IsStoryMaster
 
 class StoryProjectViewSet(viewsets.ModelViewSet):
     queryset = StoryProject.objects.all()
@@ -43,15 +43,13 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         transaction.on_commit(lambda: run_generation_task.delay(project.id))
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
-        response_data = {
-            "message": "Your story has been created and generation is now in progress.",
-            **serializer.data
-        }
-        return Response(response_data, status=status.HTTP_202_ACCEPTED, headers=headers)
+        story_master_permission = IsStoryMaster()
+        
+        if request.data.get('length') == 'long':
+            if not story_master_permission.has_permission(request, self):
+                return Response({"detail": IsStoryMaster.message}, status=status.HTTP_403_FORBIDDEN)
+        
+        return super().create(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
@@ -77,6 +75,10 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'], url_path='download-pdf')
     def download_pdf(self, request, pk=None):
+        story_master_permission = IsStoryMaster()
+        if not story_master_permission.has_permission(request, self):
+            return Response({"detail": IsStoryMaster.message}, status=status.HTTP_403_FORBIDDEN)
+        
         project = self.get_object()
         if project.status != StoryProject.Status.DONE:
             return Response({"detail": "Cannot generate PDF. Story is not yet complete."}, status=status.HTTP_400_BAD_REQUEST)

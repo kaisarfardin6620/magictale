@@ -24,6 +24,9 @@ from .serializers import (
     UnifiedProfileUpdateSerializer,
     PasswordResetFormSerializer
 )
+from subscription.models import Subscription
+from django.utils import timezone
+from datetime import timedelta
 
 
 class MyTokenObtainPairView(APIView):
@@ -42,8 +45,19 @@ class SignupAPIView(APIView):
         serializer = SignupSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
+
+            now = timezone.now()
+            Subscription.objects.create(
+                user=user,
+                plan='trial',
+                status='trialing',
+                trial_start=now,
+                trial_end=now + timedelta(days=14)
+            )
+
             UserActivityLog.objects.create(user=user, activity_type='signup', ip_address=get_client_ip(request))
             token = AuthToken.objects.create(user=user, token_type='email_verification')
+            
             verification_path = reverse('email_verification') + f'?token={token.token}'
             verification_url = f"{settings.BACKEND_BASE_URL}{verification_path}"
 
@@ -52,7 +66,6 @@ class SignupAPIView(APIView):
             send_email('Verify your email for MagicTale', plain_message, [user.email], html_message=html_message)
             return Response({"message": "User created successfully. Please check your email for verification."}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 class EmailVerificationAPIView(APIView):
     permission_classes = [AllowAny]

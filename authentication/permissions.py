@@ -1,7 +1,8 @@
 from rest_framework import permissions
-
+from django.utils import timezone
+from django.contrib.auth.models import User 
 class HasActiveSubscription(permissions.BasePermission):
-    message = "An active subscription is required to perform this action."
+    message = "An active subscription or trial is required to use this feature."
 
     def has_permission(self, request, view):
         user = request.user
@@ -10,19 +11,29 @@ class HasActiveSubscription(permissions.BasePermission):
 
         try:
             subscription = user.subscription
-        except AttributeError:
-            self.message = "You do not have a subscription."
+        except (AttributeError, User.subscription.RelatedObjectDoesNotExist):
+            self.message = "You do not have a subscription or trial."
             return False
 
-        is_active = subscription.status in ['active', 'trialing']
-        if not is_active:
-            self.message = "Your subscription is not currently active."
+        is_paid_active = subscription.status == 'active'
+        is_in_trial = (
+            subscription.status == 'trialing' and
+            subscription.trial_end is not None and
+            subscription.trial_end > timezone.now()
+        )
 
-        return is_active
+        is_allowed = is_paid_active or is_in_trial
+        
+        if not is_allowed:
+            self.message = "Your subscription or trial has ended. Please subscribe to continue."
+
+        return is_allowed
 
 class IsOwner(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
-        return obj.user == request.user
+        if hasattr(obj, 'user'):
+            return obj.user == request.user
+        return False
 
 class IsStoryMaster(permissions.BasePermission):
     message = "This feature requires a Story Master subscription."
@@ -34,12 +45,8 @@ class IsStoryMaster(permissions.BasePermission):
 
         try:
             subscription = user.subscription
-        except AttributeError:
+        except (AttributeError, User.subscription.RelatedObjectDoesNotExist):
             self.message = "You do not have a subscription."
             return False
-
-        is_master_plan = subscription.plan == 'master'
-        is_trialing = subscription.status == 'trialing'
-        is_active_master = is_master_plan and subscription.status == 'active'
-
-        return is_trialing or is_active_master
+        
+        return subscription.plan == 'master' and subscription.status == 'active'
