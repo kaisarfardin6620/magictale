@@ -3,16 +3,21 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
 from rest_framework import generics, filters
 from django_filters.rest_framework import DjangoFilterBackend
+
 from django.contrib.auth.models import User
 from subscription.models import Subscription
 from ai.models import StoryProject
 from .models import SiteSettings
 from .serializers import SubscriptionManagementSerializer, SiteSettingsSerializer
-from datetime import timedelta
+
+# --- UPDATED IMPORTS ---
+from datetime import timedelta, datetime # Import datetime
 from django.utils import timezone
 from django.db.models import Count
 from django.db.models.functions import TruncMonth
+from django.conf import settings # Import settings
 
+# --- View for the Main Dashboard Page ---
 class DashboardStatsAPIView(APIView):
     permission_classes = [IsAdminUser]
 
@@ -20,28 +25,41 @@ class DashboardStatsAPIView(APIView):
         now = timezone.now()
         last_month_start = now - timedelta(days=30)
 
+        # ... (stat card queries remain the same) ...
         total_users = User.objects.count()
         users_this_month = User.objects.filter(date_joined__gte=last_month_start).count()
-        
         active_subscriptions = Subscription.objects.filter(status__in=['active', 'trialing']).count()
         active_subs_this_month = Subscription.objects.filter(status__in=['active', 'trialing'], trial_start__gte=last_month_start).count()
-
         total_stories = StoryProject.objects.count()
         stories_this_month = StoryProject.objects.filter(created_at__gte=last_month_start).count()
 
+        # === FIX #1: ADD USER ID AND PROFILE PICTURE TO RECENT SIGNUPS ===
         recent_users = User.objects.select_related('profile', 'subscription').order_by('-date_joined')[:5]
-        recent_signups_data = [{
-            'name': user.get_full_name() or user.username, 'email': user.email,
-            'date': user.date_joined.strftime('%b %d, %Y'),
-            'plan': user.subscription.get_plan_display() if hasattr(user, 'subscription') else 'Free'
-        } for user in recent_users]
-
+        recent_signups_data = []
+        for user in recent_users:
+            profile_picture_url = None
+            if hasattr(user, 'profile') and user.profile.profile_picture and hasattr(user.profile.profile_picture, 'url'):
+                if settings.USE_S3_STORAGE:
+                    profile_picture_url = user.profile.profile_picture.url
+                else:
+                    profile_picture_url = f"{settings.BACKEND_BASE_URL}{user.profile.profile_picture.url}"
+            
+            recent_signups_data.append({
+                'id': user.id, # <-- ADDED
+                'profile_picture_url': profile_picture_url, # <-- ADDED
+                'name': user.get_full_name() or user.username,
+                'email': user.email,
+                'date': user.date_joined.strftime('%b %d, %Y'),
+                'plan': user.subscription.get_plan_display() if hasattr(user, 'subscription') else 'Free'
+            })
+        
+        # === FIX #2: CHANGE STATUS LABELS FOR RECENT STORIES ===
         recent_stories = StoryProject.objects.select_related('user').order_by('-created_at')[:5]
         recent_stories_data = [{
             'title': story.theme or "Custom Story",
             'creator': story.user.get_full_name() or story.user.username,
             'date': story.created_at.strftime('%b %d, %Y'),
-            'status': story.get_status_display()
+            'status': 'Published' if story.status == 'done' else 'Pending' # <-- MODIFIED
         } for story in recent_stories]
 
         data = {
@@ -61,9 +79,10 @@ class DashboardStatsAPIView(APIView):
             return 100.0 if new > 0 else 0.0
         return round((new / old) * 100, 2)
 
+# ... (SubscriptionManagementView remains unchanged) ...
 class SubscriptionManagementView(generics.ListAPIView):
     permission_classes = [IsAdminUser]
-    serializer_class = SubscriptionManagementSerializer 
+    serializer_class = SubscriptionManagementSerializer
     queryset = Subscription.objects.select_related('user', 'user__profile').order_by('-id')
     
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
@@ -122,32 +141,54 @@ class SubscriptionManagementView(generics.ListAPIView):
         
         return Response(combined_data)
 
+# --- Views for the Analytics & Reports Page ---
 class AnalyticsAPIView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
-        one_year_ago = timezone.now() - timedelta(days=365)
         
-        user_growth = User.objects.filter(date_joined__gte=one_year_ago) \
+        # === FIX #3: GENERATE FULL 12-MONTH DATA FOR CHARTS ===
+        now = timezone.now()
+        one_year_ago = now - timedelta(days=365)
+        
+        # --- Process User Growth Data ---
+        user_growth_query = User.objects.filter(date_joined__gte=one_year_ago) \
             .annotate(month=TruncMonth('date_joined')) \
             .values('month') \
             .annotate(count=Count('id')) \
             .order_by('month')
-
+            
+        # Create a dictionary for easy lookup: {1: 10, 2: 15} (month_number: count)
+        user_growth_map = {item['month'].month: item['count'] for item in user_growth_query}
+        
+        # Build the final 12-month list
+        user_growth_data = []
+        for month_num in range(1, 13):
+            month_name = datetime(now.year, month_num, 1).strftime('%b')
+            user_growth_data.append({
+                "month": month_name,
+                "count": user_growth_map.get(month_num, 0) # Use the count from DB, or 0 if no data
+            })
+            
+        # --- Process Stories by Age Data ---
+        # This chart is not a time-series, so it doesn't need the 12-month format.
+        # We just format it cleanly.
         stories_by_age = StoryProject.objects.values('age') \
             .annotate(count=Count('id')) \
             .order_by('age')
 
+        # --- Process Top Performing Stories ---
         top_stories = StoryProject.objects.order_by('-read_count', '-likes_count')[:5] \
-            .values('theme', 'read_count', 'likes_count', 'shares_count')
+            .values('theme', 'read_count', 'likes_count', 'shares_count', 'tags', 'length')
 
         data = {
-            'user_growth_over_time': list(user_growth),
+            'user_growth_over_time': user_growth_data, # <-- USE THE NEW FORMATTED DATA
             'stories_created_by_age_group': list(stories_by_age),
             'top_performing_stories': list(top_stories)
         }
         return Response(data)
 
+# ... (SiteSettingsView remains unchanged) ...
 class SiteSettingsView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAdminUser]
     serializer_class = SiteSettingsSerializer
