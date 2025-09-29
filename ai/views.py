@@ -44,11 +44,9 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         story_master_permission = IsStoryMaster()
-        
         if request.data.get('length') == 'long':
             if not story_master_permission.has_permission(request, self):
                 return Response({"detail": IsStoryMaster.message}, status=status.HTTP_403_FORBIDDEN)
-        
         return super().create(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"])
@@ -83,8 +81,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         if project.status != StoryProject.Status.DONE:
             return Response({"detail": "Cannot generate PDF. Story is not yet complete."}, status=status.HTTP_400_BAD_REQUEST)
         
-        pages = project.pages.all().order_by('index')
-        context = {"project": project, "pages": pages}
+        context = {"project": project}
         html_string = render_to_string("ai/story_pdf_template.html", context)
         pdf_file = HTML(string=html_string).write_pdf()
         

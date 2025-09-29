@@ -2,41 +2,26 @@ import asyncio
 import os
 import json
 from pathlib import Path
-from typing import List, Dict
 from django.utils import timezone
 from asgiref.sync import sync_to_async
 from channels.layers import get_channel_layer
 from django.conf import settings
 from openai import OpenAI
-from django.db.models import Model
-from .models import StoryProject, StoryPage, GenerationEvent
+
+from .models import StoryProject, GenerationEvent
 
 client = OpenAI(api_key=getattr(settings, "OPENAI_API_KEY", None))
 
-
 @sync_to_async
 def _reload_project(project_id: int) -> StoryProject | None:
-    """
-    Fetches the project and related user/onboarding data from the database.
-    Uses .filter().first() for safe retrieval to prevent DoesNotExist exception.
-    """
-    return StoryProject.objects.select_related("user").filter(pk=project_id).first()
-
-@sync_to_async
-def _get_project_status(project_id: int) -> str | None:
-    """Fetches only the status of a project from the DB for cancellation checks."""
-    # .only('status') is a performance optimization.
-    project = StoryProject.objects.filter(pk=project_id).only('status').first()
-    return project.status if project else None
+    return StoryProject.objects.filter(pk=project_id).first()
 
 @sync_to_async
 def _save_event(project: StoryProject, kind: str, payload: dict):
-    """Saves a generation event log to the database."""
     GenerationEvent.objects.create(project=project, kind=kind, payload=payload)
 
 @sync_to_async
 def _update_progress(project: StoryProject, status: str = None, progress: int = None, error: str = None, finished=False):
-    """Updates the project's status and progress in the database."""
     changed = []
     if status:
         project.status = status
@@ -55,195 +40,114 @@ def _update_progress(project: StoryProject, status: str = None, progress: int = 
     return project.progress, project.status
 
 @sync_to_async
-def _persist_pages(project: StoryProject, pages_text: List[str]):
-    """Deletes old pages and creates new ones for the project."""
-    StoryPage.objects.filter(project=project).delete()
-    new_pages = [StoryPage(project=project, index=i, text=text) for i, text in enumerate(pages_text, start=1)]
-    StoryPage.objects.bulk_create(new_pages)
-
-@sync_to_async
-def _save_project_fields(project: StoryProject, fields: Dict):
-    """Saves arbitrary fields to the project instance."""
+def _save_project_fields(project: StoryProject, fields: dict):
     for key, value in fields.items():
         setattr(project, key, value)
     project.save(update_fields=list(fields.keys()))
 
 async def _send(project_id: int, event: dict):
-    """Sends a progress update over the WebSocket."""
     layer = get_channel_layer()
     await layer.group_send(f"story_{project_id}", {"type": "progress", "event": event})
 
-
-
 def _build_story_prompt(project: StoryProject) -> str:
-    """Builds the main text prompt for the story."""
     story_subject = project.custom_prompt.strip() if project.custom_prompt and project.custom_prompt.strip() else f"Theme: {project.theme}"
-
     return f"""
-You are a children's storyteller. Write a {project.length} {project.language} story for a {project.age}-year-old child named {project.child_name} ({project.pronouns}).
+You are a children's storyteller. Write a complete {project.length} {project.language} story for a {project.age}-year-old child named {project.child_name} ({project.pronouns}).
 {story_subject}.
-Visual art style reference (for tone only): {project.art_style}.
-Include their favorite animal ({project.favorite_animal}) and favorite color ({project.favorite_color}) as fun motifs in the story.
-Reading difficulty target: {project.difficulty}/5 (use simpler words and sentence structures for lower numbers).
-Return the story as 8 short scenes separated with this exact delimiter line:
-
---- PAGE ---
-
-Keep each page to 4-7 sentences. This is important for the story's pacing and detail. Do not write the page numbers.
+Include their favorite animal ({project.favorite_animal}) and favorite color ({project.favorite_color}) as fun motifs.
+Reading difficulty target: {project.difficulty}/5.
+Return the entire story as a single block of text with paragraphs separated by newlines.
 """
 
 def _build_synopsis_prompt(story_text: str) -> str:
-    """Builds the prompt to generate a synopsis and tags from the full story."""
     return f"""
 You are a story analyst. Based on the following children's story, perform two tasks:
 1. Write a short, exciting one-paragraph synopsis (3-4 sentences).
 2. Suggest 3 relevant, single-word tags (e.g., Adventure, Friendship, Forest, Magic).
-
 Return your response in a JSON format like this:
 {{
   "synopsis": "Your generated synopsis here.",
   "tags": "Tag1, Tag2, Tag3"
 }}
-
 Here is the story:
 ---
 {story_text}
 ---
 """
 
-def _build_image_prompt(page_text: str, project: StoryProject) -> str:
-    """Builds a DALL-E prompt for a single story page."""
+def _build_cover_image_prompt(synopsis: str, project: StoryProject) -> str:
     return f"""
-A beautiful children's book illustration in the art style of {project.art_style}.
-The scene is about: "{page_text}"
-The illustration should be vibrant, whimsical, and suitable for a young child.
+A beautiful children's book cover illustration in the art style of {project.art_style}.
+The story is about: "{synopsis}"
+The illustration should be vibrant, whimsical, and suitable for a young child, worthy of a book cover.
 Do not include any text, letters, words, or bubbles in the image.
 """
 
-
-def _split_into_pages(text: str) -> List[str]:
-    parts = [p.strip() for p in text.split("--- PAGE ---") if p.strip()]
-    return parts[:12]
-
-@sync_to_async
-def _generate_and_save_image(page: StoryPage, project: StoryProject):
-    prompt = _build_image_prompt(page.text, project)
-    try:
-        response = client.images.generate(
-            model=settings.AI_IMAGE_MODEL,
-            prompt=prompt,
-            n=1,
-            size="1024x1024",
-            response_format="url",
-            timeout=120.0,
-        )
-        page.image_url = response.data[0].url
-        page.save(update_fields=["image_url"])
-    except Exception as e:
-        print(f"Image generation failed for project {project.id}, page {page.index}: {e}")
-        raise e
-
-@sync_to_async
-def _generate_and_save_audio(page: StoryPage, project: StoryProject):
-    try:
-        response = client.audio.speech.create(
-            model=settings.AI_AUDIO_MODEL,
-            voice=project.voice or "alloy",
-            input=page.text,
-            timeout=60.0,
-        )
-        audio_dir = Path(settings.MEDIA_ROOT) / 'audio'
-        os.makedirs(audio_dir, exist_ok=True)
-        file_path = audio_dir / f"{page.id}.mp3"
-        response.stream_to_file(file_path)
-        page.audio_url = f"{settings.MEDIA_URL}audio/{page.id}.mp3"
-        page.save(update_fields=["audio_url"])
-    except Exception as e:
-        print(f"Audio generation failed for project {project.id}, page {page.index}: {e}")
-        raise e
-
 async def run_generation_async(project_id: int):
     project = await _reload_project(project_id)
-
-    if project is None:
-        print(f"Project ID {project_id} does not exist or was deleted. Task skipped gracefully.")
-        return
+    if project is None: return
 
     await _save_event(project, "start", {"status": project.status})
-    await _send(project_id, {"status": "running", "progress": project.progress})
+    await _send(project_id, {"status": "running", "progress": 5})
 
     try:
-        prompt = _build_story_prompt(project)
-        await _save_event(project, "prompt", {"prompt": prompt})
-        await _update_progress(project, progress=10)
         await _send(project_id, {"message": "Crafting your unique story...", "progress": 15})
-
-        resp = await asyncio.to_thread(
+        story_prompt = _build_story_prompt(project)
+        text_resp = await asyncio.to_thread(
             client.chat.completions.create,
             model=project.model_used or settings.AI_TEXT_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful and creative storyteller for children."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.9,
-            timeout=90.0,
+            messages=[{"role": "user", "content": story_prompt}],
+            temperature=0.9, timeout=90.0
         )
-        await _update_progress(project, progress=50)
+        full_text = text_resp.choices[0].message.content.strip() if text_resp.choices else ""
+        await _save_project_fields(project, {"text": full_text})
+        await _update_progress(project, progress=30)
 
-        content = resp.choices[0].message.content if resp.choices else ""
-        await _save_event(project, "model_result", {"length": len(content)})
-        await _send(project_id, {"message": "Story draft received!", "progress": 55})
-
-        pages_text = _split_into_pages(content)
-        await _persist_pages(project, pages_text)
-        await _save_event(project, "pages_built", {"count": len(pages_text)})
-        await _update_progress(project, progress=60)
-
-        current_status = await _get_project_status(project_id)
-        if current_status == StoryProject.Status.CANCELED:
-            print(f"Task for project {project_id} canceled by user. Halting execution.")
-            await _save_event(project, "canceled", {"message": "Generation halted by user."})
-            return  
-
-        await _send(project_id, {"message": f"Creating {len(pages_text)} pages of art and audio...", "progress": 65})
-        project_pages = await sync_to_async(list)(project.pages.all())
-        multimedia_tasks = []
-        for page in project_pages:
-            multimedia_tasks.append(_generate_and_save_image(page, project))
-            multimedia_tasks.append(_generate_and_save_audio(page, project))
-        await asyncio.gather(*multimedia_tasks)
-        await _save_event(project, "multimedia_done", {})
-        await _update_progress(project, progress=90)
-
-        await _send(project_id, {"message": "Adding the finishing touches...", "progress": 91})
-        synopsis_prompt = _build_synopsis_prompt(content)
+        await _send(project_id, {"message": "Summarizing the adventure...", "progress": 40})
+        synopsis_prompt = _build_synopsis_prompt(full_text)
         synopsis_resp = await asyncio.to_thread(
             client.chat.completions.create,
             model=settings.AI_TEXT_MODEL,
             messages=[{"role": "user", "content": synopsis_prompt}],
-            response_format={"type": "json_object"},
-            temperature=0.5,
+            response_format={"type": "json_object"}, temperature=0.5
         )
-
         try:
-            extra_data = json.loads(synopsis_resp.choices[0].message.content)
-        except (json.JSONDecodeError, IndexError, TypeError):
-            extra_data = {"synopsis": "A magical adventure awaits!", "tags": "Magic"}
+            metadata = json.loads(synopsis_resp.choices[0].message.content)
+            await _save_project_fields(project, metadata)
+        except (json.JSONDecodeError, IndexError):
+            metadata = {"synopsis": "A magical adventure awaits!"}
+        await _update_progress(project, progress=50)
 
-        first_page = await sync_to_async(project.pages.order_by('index').first)()
-        cover_image_url = first_page.image_url if first_page else ""
-        extra_data['cover_image_url'] = cover_image_url
+        await _send(project_id, {"message": "Creating the cover art...", "progress": 60})
+        image_prompt = _build_cover_image_prompt(metadata.get("synopsis", project.theme), project)
+        image_resp = await asyncio.to_thread(
+            client.images.generate,
+            model=settings.AI_IMAGE_MODEL,
+            prompt=image_prompt, n=1, size="1024x1024", response_format="url", timeout=120.0
+        )
+        image_url = image_resp.data[0].url if image_resp.data else ""
+        await _save_project_fields(project, {"image_url": image_url, "cover_image_url": image_url})
+        await _update_progress(project, progress=80)
 
-        await _save_project_fields(project, extra_data)
-        await _save_event(project, "metadata_generated", extra_data)
-        await _update_progress(project, progress=95)
+        await _send(project_id, {"message": "Recording the narration...", "progress": 90})
+        audio_resp = await asyncio.to_thread(
+            client.audio.speech.create,
+            model=settings.AI_AUDIO_MODEL,
+            voice=project.voice or "alloy",
+            input=full_text, timeout=180.0
+        )
+        audio_dir = Path(settings.MEDIA_ROOT) / 'audio'
+        os.makedirs(audio_dir, exist_ok=True)
+        file_path = audio_dir / f"story_{project.id}.mp3"
+        audio_resp.stream_to_file(file_path)
+        audio_url = f"{settings.MEDIA_URL}audio/story_{project.id}.mp3"
+        await _save_project_fields(project, {"audio_url": audio_url})
 
         await _update_progress(project, status="done", progress=100, finished=True)
         await _save_event(project, "done", {})
         await _send(project_id, {"status": "done", "progress": 100, "message": "Your story is complete!"})
 
     except Exception as e:
-        print(f"An error occurred during generation for project {project.id}: {e}")
         error_message = str(e)
         await _update_progress(project, status="failed", error=error_message)
         await _save_event(project, "error", {"error": error_message})
