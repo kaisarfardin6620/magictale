@@ -17,7 +17,6 @@ class StoryProjectCreateSerializer(serializers.ModelSerializer):
             "voice", "length", "difficulty", "model_used"
         ]
         read_only_fields = ["id"]
-
     def create(self, validated_data):
         user = self.context["request"].user
         hero_data = validated_data.pop('hero')
@@ -40,13 +39,10 @@ class StoryProjectDetailSerializer(serializers.ModelSerializer):
         model = StoryProject
         depth = 0
         fields = [
-            "id", "user", "onboarding", "is_saved",
-            "child_name", "age", "pronouns", "favorite_animal", "favorite_color",
-            "theme", "custom_prompt", "art_style", "language", "voice",
-            "length", "difficulty", "model_used", "synopsis", "tags",
-            "status", "progress", "error", "read_count", "likes_count", "shares_count",
-            "created_at", "started_at", "finished_at",
-            "text", "image_url", "audio_url"
+            "id", "user", "onboarding", "is_saved", "child_name", "age", "pronouns", "favorite_animal", 
+            "favorite_color", "theme", "custom_prompt", "art_style", "language", "voice", "length", 
+            "difficulty", "model_used", "synopsis", "tags", "status", "progress", "error", "read_count", 
+            "likes_count", "shares_count", "created_at", "started_at", "finished_at", "text", "image_url", "audio_url"
         ]
         
     def get_image_url(self, obj):
@@ -55,6 +51,6 @@ class StoryProjectDetailSerializer(serializers.ModelSerializer):
     def get_audio_url(self, obj):
         if obj.audio_url:
             if settings.USE_S3_STORAGE:
-                return obj.audio_url
+                return obj.audio.url
             return f"{settings.BACKEND_BASE_URL}{obj.audio_url}"
         return None
