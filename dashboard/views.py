@@ -3,16 +3,24 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
 from rest_framework import generics, filters
 from django_filters.rest_framework import DjangoFilterBackend
+
 from django.contrib.auth.models import User
 from subscription.models import Subscription
 from ai.models import StoryProject
 from .models import SiteSettings
-from .serializers import SubscriptionManagementSerializer, SiteSettingsSerializer
+from .serializers import (
+    SubscriptionManagementSerializer,
+    SiteSettingsSerializer,
+    DashboardUserSerializer,
+    DashboardStorySerializer
+)
+
 from datetime import timedelta, datetime
 from django.utils import timezone
 from django.db.models import Count
 from django.db.models.functions import TruncMonth
 from django.conf import settings
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 
 class DashboardStatsAPIView(APIView):
     permission_classes = [IsAdminUser]
@@ -20,38 +28,55 @@ class DashboardStatsAPIView(APIView):
     def get(self, request):
         now = timezone.now()
         last_month_start = now - timedelta(days=30)
+
+        # Stat Card Queries
         total_users = User.objects.count()
         users_this_month = User.objects.filter(date_joined__gte=last_month_start).count()
         active_subscriptions = Subscription.objects.filter(status__in=['active', 'trialing']).count()
         active_subs_this_month = Subscription.objects.filter(status__in=['active', 'trialing'], trial_start__gte=last_month_start).count()
         total_stories = StoryProject.objects.count()
         stories_this_month = StoryProject.objects.filter(created_at__gte=last_month_start).count()
-        recent_users = User.objects.select_related('profile', 'subscription').order_by('-date_joined')[:5]
-        recent_signups_data = []
-        for user in recent_users:
-            profile_picture_url = None
-            if hasattr(user, 'profile') and user.profile.profile_picture and hasattr(user.profile.profile_picture, 'url'):
-                if settings.USE_S3_STORAGE:
-                    profile_picture_url = user.profile.profile_picture.url
-                else:
-                    profile_picture_url = f"{settings.BACKEND_BASE_URL}{user.profile.profile_picture.url}"
-            
-            recent_signups_data.append({
-                'id': user.id,
-                'profile_picture_url': profile_picture_url,
-                'name': user.get_full_name() or user.username,
-                'email': user.email,
-                'date': user.date_joined.strftime('%b %d, %Y'),
-                'plan': user.subscription.get_plan_display() if hasattr(user, 'subscription') else 'Free'
-            })
+
+        # --- PAGINATION FOR USERS ---
+        user_list = User.objects.select_related('profile', 'subscription').order_by('-date_joined')
+        user_paginator = Paginator(user_list, 10)
+        user_page_number = request.query_params.get('user_page', 1)
+        try:
+            paginated_users = user_paginator.page(user_page_number)
+        except (PageNotAnInteger, EmptyPage):
+            paginated_users = user_paginator.page(1)
         
-        recent_stories = StoryProject.objects.select_related('user').order_by('-created_at')[:5]
-        recent_stories_data = [{
-            'title': story.theme or "Custom Story",
-            'creator': story.user.get_full_name() or story.user.username,
-            'date': story.created_at.strftime('%b %d, %Y'),
-            'status': 'Published' if story.status == 'done' else 'Pending'
-        } for story in recent_stories]
+        user_serializer = DashboardUserSerializer(paginated_users, many=True)
+        
+        # --- PAGINATION FOR STORIES ---
+        story_list = StoryProject.objects.select_related('user').order_by('-created_at')
+        story_paginator = Paginator(story_list, 10)
+        story_page_number = request.query_params.get('story_page', 1)
+        try:
+            paginated_stories = story_paginator.page(story_page_number)
+        except (PageNotAnInteger, EmptyPage):
+            paginated_stories = story_paginator.page(1)
+
+        story_serializer = DashboardStorySerializer(paginated_stories, many=True)
+
+        # --- Helper functions to build full pagination URLs ---
+        scheme = request.scheme
+        host = request.get_host()
+        path = request.path
+        
+        def get_next_url(paginated_qs, page_param_name):
+            if paginated_qs.has_next():
+                params = request.query_params.copy()
+                params[page_param_name] = paginated_qs.next_page_number()
+                return f"{scheme}://{host}{path}?{params.urlencode()}"
+            return None
+
+        def get_previous_url(paginated_qs, page_param_name):
+            if paginated_qs.has_previous():
+                params = request.query_params.copy()
+                params[page_param_name] = paginated_qs.previous_page_number()
+                return f"{scheme}://{host}{path}?{params.urlencode()}"
+            return None
 
         data = {
             'stats': {
@@ -60,8 +85,22 @@ class DashboardStatsAPIView(APIView):
                 'stories_created': {'value': total_stories, 'change': self._calculate_change(total_stories - stories_this_month, stories_this_month)},
                 'reported_content': {'value': 0, 'change': 0.0}
             },
-            'recent_signups': recent_signups_data,
-            'recent_stories': recent_stories_data,
+            'recent_signups': {
+                'count': user_paginator.count,
+                'num_pages': user_paginator.num_pages,
+                'current_page': paginated_users.number,
+                'next': get_next_url(paginated_users, 'user_page'),
+                'previous': get_previous_url(paginated_users, 'user_page'),
+                'results': user_serializer.data
+            },
+            'recent_stories': {
+                'count': story_paginator.count,
+                'num_pages': story_paginator.num_pages,
+                'current_page': paginated_stories.number,
+                'next': get_next_url(paginated_stories, 'story_page'),
+                'previous': get_previous_url(paginated_stories, 'story_page'),
+                'results': story_serializer.data
+            }
         }
         return Response(data)
 

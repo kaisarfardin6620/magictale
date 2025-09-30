@@ -1,41 +1,26 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from subscription.models import Subscription
+from ai.models import StoryProject
 from .models import SiteSettings
 from django.conf import settings
 import stripe
 
-# Set the API key for Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 class SubscriptionManagementSerializer(serializers.ModelSerializer):
-    # --- THIS IS THE FIX ---
-    # Use valid Python variable names (with underscores).
-    # The `source` argument points to the method that will provide the data.
-    # The serializer will automatically rename the output key from 'user_name' to 'User Name'.
-    user_name = serializers.SerializerMethodField(source='get_User_Name')
+    user_name = serializers.SerializerMethodField()
     current_plan = serializers.CharField(source='get_plan_display')
-    renewal_date = serializers.SerializerMethodField(source='get_Renewal_Date')
-    payment_method = serializers.SerializerMethodField(source='get_Payment_Method')
-
-    # We also need to add a 'status' field.
+    renewal_date = serializers.SerializerMethodField()
+    payment_method = serializers.SerializerMethodField()
     status = serializers.CharField()
-    
-    # We will rename the output fields in the to_representation method.
-    
+
     class Meta:
         model = Subscription
-        # Use the valid Python field names here.
         fields = [
-            'id',
-            'user_name',
-            'current_plan',
-            'renewal_date',
-            'payment_method',
-            'status'
+            'id', 'user_name', 'current_plan', 'renewal_date', 'payment_method', 'status'
         ]
 
-    # --- RENAME THE METHODS TO MATCH THE `source` ARGUMENTS ---
     def get_user_name(self, obj):
         profile_picture_url = None
         if hasattr(obj.user, 'profile') and obj.user.profile.profile_picture and hasattr(obj.user.profile.profile_picture, 'url'):
@@ -43,7 +28,6 @@ class SubscriptionManagementSerializer(serializers.ModelSerializer):
                 profile_picture_url = obj.user.profile.profile_picture.url
             else:
                 profile_picture_url = f"{settings.BACKEND_BASE_URL}{obj.user.profile.profile_picture.url}"
-
         return {
             "photo": profile_picture_url,
             "name": obj.user.get_full_name(),
@@ -51,27 +35,16 @@ class SubscriptionManagementSerializer(serializers.ModelSerializer):
         }
 
     def get_renewal_date(self, obj):
-        date_to_format = None
-        if obj.status == 'trialing':
-            date_to_format = obj.trial_end
-        else:
-            date_to_format = obj.current_period_end
-        
-        if date_to_format:
-            return date_to_format.strftime('%b %d, %Y')
-        return None
+        date_to_format = obj.trial_end if obj.status == 'trialing' else obj.current_period_end
+        return date_to_format.strftime('%b %d, %Y') if date_to_format else None
 
     def get_payment_method(self, obj):
         if not obj.stripe_customer_id:
             return None
         try:
-            payment_methods = stripe.PaymentMethod.list(
-                customer=obj.stripe_customer_id,
-                type="card",
-            )
+            payment_methods = stripe.PaymentMethod.list(customer=obj.stripe_customer_id, type="card")
             if not payment_methods.data:
                 return None
-            
             card = payment_methods.data[0].card
             return {
                 "cardType": card.brand.title(),
@@ -80,13 +53,8 @@ class SubscriptionManagementSerializer(serializers.ModelSerializer):
         except Exception:
             return None
 
-    # --- ADD THIS METHOD TO RENAME THE OUTPUT KEYS ---
     def to_representation(self, instance):
-        """
-        Convert `obj` into a dictionary representation with custom key names.
-        """
         ret = super().to_representation(instance)
-        # This renames the keys to match the frontend's expected format with spaces.
         return {
             'id': ret['id'],
             'User Name': ret['user_name'],
@@ -96,9 +64,7 @@ class SubscriptionManagementSerializer(serializers.ModelSerializer):
             'status': ret['status']
         }
 
-
 class SiteSettingsSerializer(serializers.ModelSerializer):
-    # ... (This class remains unchanged)
     application_logo_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -113,3 +79,35 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
                 return obj.application_logo.url
             return f"{settings.BACKEND_BASE_URL}{obj.application_logo.url}"
         return None
+
+# === ADD THESE NEW SERIALIZERS ===
+
+class DashboardUserSerializer(serializers.ModelSerializer):
+    plan = serializers.CharField(source='subscription.get_plan_display', read_only=True, default='Free')
+    profile_picture_url = serializers.SerializerMethodField()
+    date = serializers.DateTimeField(source='date_joined', format='%b %d, %Y')
+    name = serializers.CharField(source='get_full_name')
+
+    class Meta:
+        model = User
+        fields = ['id', 'profile_picture_url', 'name', 'email', 'date', 'plan']
+    
+    def get_profile_picture_url(self, obj):
+        if hasattr(obj, 'profile') and obj.profile.profile_picture and hasattr(obj.profile.profile_picture, 'url'):
+            if settings.USE_S3_STORAGE:
+                return obj.profile.profile_picture.url
+            return f"{settings.BACKEND_BASE_URL}{obj.profile.profile_picture.url}"
+        return None
+
+class DashboardStorySerializer(serializers.ModelSerializer):
+    title = serializers.CharField(source='theme')
+    creator = serializers.CharField(source='user.get_full_name', read_only=True)
+    date = serializers.DateTimeField(source='created_at', format='%b %d, %Y')
+    status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StoryProject
+        fields = ['id', 'title', 'creator', 'date', 'status']
+    
+    def get_status(self, obj):
+        return 'Published' if obj.status == 'done' else 'Pending'

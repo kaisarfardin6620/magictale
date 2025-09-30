@@ -196,3 +196,7 @@ AI_TEXT_MODEL, AI_IMAGE_MODEL, AI_AUDIO_MODEL = os.getenv("AI_TEXT_MODEL", "gpt-
 
 # --- Custom Project Settings ---
 BACKEND_BASE_URL = os.getenv('BACKEND_BASE_URL', 'http://127.0.0.1:8001')
+
+
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
