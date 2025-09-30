@@ -23,9 +23,10 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = self.queryset.filter(user=self.request.user).order_by("-created_at")
-        is_saved_filter = self.request.query_params.get('saved', '').lower()
-        if is_saved_filter == 'true':
+
+        if self.action == 'list':
             return queryset.filter(is_saved=True)
+        
         return queryset
 
     def get_serializer_class(self):
@@ -47,7 +48,21 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         if request.data.get('length') == 'long':
             if not story_master_permission.has_permission(request, self):
                 return Response({"detail": IsStoryMaster.message}, status=status.HTTP_403_FORBIDDEN)
-        return super().create(request, *args, **kwargs)
+        
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    @action(detail=False, methods=['get'])
+    def latest(self, request):
+        latest_story = StoryProject.objects.filter(user=request.user).order_by('-created_at').first()
+        if not latest_story:
+            return Response({"detail": "No stories found for this user."}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = self.get_serializer(latest_story)
+        return Response(serializer.data)
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
