@@ -32,6 +32,7 @@ class StoryProject(models.Model):
     text = models.TextField(blank=True, null=True)
     image_url = models.URLField(max_length=1024, blank=True, null=True)
     audio_url = models.URLField(max_length=1024, blank=True, null=True)
+    audio_duration_seconds = models.PositiveIntegerField(null=True, blank=True, help_text="The duration of the generated audio in seconds.")
     synopsis = models.TextField(blank=True, default="")
     tags = models.CharField(max_length=255, blank=True, default="")
     cover_image_url = models.URLField(max_length=1024, blank=True, default="")

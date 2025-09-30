@@ -7,6 +7,7 @@ from asgiref.sync import sync_to_async
 from channels.layers import get_channel_layer
 from django.conf import settings
 from openai import OpenAI
+from mutagen.mp3 import MP3
 
 from .models import StoryProject, GenerationEvent
 
@@ -141,7 +142,18 @@ async def run_generation_async(project_id: int):
         file_path = audio_dir / f"story_{project.id}.mp3"
         audio_resp.stream_to_file(file_path)
         audio_url = f"{settings.MEDIA_URL}audio/story_{project.id}.mp3"
-        await _save_project_fields(project, {"audio_url": audio_url})
+        
+        duration_seconds = 0
+        try:
+            audio_file = MP3(file_path)
+            duration_seconds = int(audio_file.info.length)
+        except Exception as e:
+            print(f"Could not read audio duration for project {project.id}: {e}")
+        
+        await _save_project_fields(project, {
+            "audio_url": audio_url,
+            "audio_duration_seconds": duration_seconds
+        })
 
         await _update_progress(project, status="done", progress=100, finished=True)
         await _save_event(project, "done", {})
