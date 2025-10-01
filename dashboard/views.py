@@ -157,17 +157,19 @@ class AdminProfileView(APIView):
         serializer = AdminProfileSerializer(request.user)
         return Response(serializer.data)
 
-    def put(self, request):
-        serializer = AdminProfileUpdateSerializer(instance=request.user, data=request.data, context={'request': request}, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(AdminProfileSerializer(request.user).data, status=status.HTTP_200_OK)
-
     def post(self, request):
         user = request.user
-        serializer = AdminChangePasswordSerializer(data=request.data, context={'request': request})
+        
+        if 'new_password' in request.data and 'current_password' in request.data:
+            serializer = AdminChangePasswordSerializer(data=request.data, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            user.set_password(serializer.validated_data['new_password'])
+            user.save()
+            OutstandingToken.objects.filter(user=user).delete()
+            return Response({"message": "Password changed successfully."}, status=status.HTTP_200_OK)
+        
+        serializer = AdminProfileUpdateSerializer(instance=user, data=request.data, context={'request': request}, partial=True)
         serializer.is_valid(raise_exception=True)
-        user.set_password(serializer.validated_data['new_password'])
-        user.save()
-        OutstandingToken.objects.filter(user=user).delete()
-        return Response({"message": "Password changed successfully."}, status=status.HTTP_200_OK)
+        serializer.save()
+        
+        return Response(AdminProfileSerializer(user).data, status=status.HTTP_200_OK)
