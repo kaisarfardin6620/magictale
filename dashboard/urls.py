@@ -6,6 +6,7 @@ from .views import (
     SiteSettingsView,
     TimezoneListView,
     LanguageListView,
+    AdminProfileView,
 )
 
 urlpatterns = [
@@ -15,4 +16,5 @@ urlpatterns = [
     path('settings/', SiteSettingsView.as_view(), name='dashboard-settings'),
     path('timezones/', TimezoneListView.as_view(), name='dashboard-timezones'),
     path('languages/', LanguageListView.as_view(), name='dashboard-languages'),
+    path('profile/', AdminProfileView.as_view(), name='admin-profile'),
 ]
