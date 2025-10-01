@@ -4,6 +4,8 @@ from .views import (
     SubscriptionManagementView,
     AnalyticsAPIView,
     SiteSettingsView,
+    TimezoneListView,
+    LanguageListView,
 )
 
 urlpatterns = [
@@ -11,4 +13,6 @@ urlpatterns = [
     path('subscriptions/', SubscriptionManagementView.as_view(), name='dashboard-subscriptions'),
     path('reports/', AnalyticsAPIView.as_view(), name='dashboard-reports'),
     path('settings/', SiteSettingsView.as_view(), name='dashboard-settings'),
+    path('timezones/', TimezoneListView.as_view(), name='dashboard-timezones'),
+    path('languages/', LanguageListView.as_view(), name='dashboard-languages'),
 ]

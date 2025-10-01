@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
 from rest_framework import generics, filters
 from django_filters.rest_framework import DjangoFilterBackend
-
+import pytz
 from django.contrib.auth.models import User
 from subscription.models import Subscription
 from ai.models import StoryProject
@@ -28,8 +28,6 @@ class DashboardStatsAPIView(APIView):
     def get(self, request):
         now = timezone.now()
         last_month_start = now - timedelta(days=30)
-
-        # Stat Card Queries
         total_users = User.objects.count()
         users_this_month = User.objects.filter(date_joined__gte=last_month_start).count()
         active_subscriptions = Subscription.objects.filter(status__in=['active', 'trialing']).count()
@@ -37,7 +35,6 @@ class DashboardStatsAPIView(APIView):
         total_stories = StoryProject.objects.count()
         stories_this_month = StoryProject.objects.filter(created_at__gte=last_month_start).count()
 
-        # --- PAGINATION FOR USERS ---
         user_list = User.objects.select_related('profile', 'subscription').order_by('-date_joined')
         user_paginator = Paginator(user_list, 10)
         user_page_number = request.query_params.get('user_page', 1)
@@ -45,10 +42,8 @@ class DashboardStatsAPIView(APIView):
             paginated_users = user_paginator.page(user_page_number)
         except (PageNotAnInteger, EmptyPage):
             paginated_users = user_paginator.page(1)
-        
         user_serializer = DashboardUserSerializer(paginated_users, many=True)
         
-        # --- PAGINATION FOR STORIES ---
         story_list = StoryProject.objects.select_related('user').order_by('-created_at')
         story_paginator = Paginator(story_list, 10)
         story_page_number = request.query_params.get('story_page', 1)
@@ -56,10 +51,8 @@ class DashboardStatsAPIView(APIView):
             paginated_stories = story_paginator.page(story_page_number)
         except (PageNotAnInteger, EmptyPage):
             paginated_stories = story_paginator.page(1)
-
         story_serializer = DashboardStorySerializer(paginated_stories, many=True)
 
-        # --- Helper functions to build full pagination URLs ---
         scheme = request.scheme
         host = request.get_host()
         path = request.path
@@ -157,52 +150,39 @@ class AnalyticsAPIView(APIView):
     def get(self, request):
         now = timezone.now()
         one_year_ago = now - timedelta(days=365)
-        
         user_growth_query = User.objects.filter(date_joined__gte=one_year_ago) \
             .annotate(month=TruncMonth('date_joined')) \
             .values('month') \
             .annotate(count=Count('id')) \
             .order_by('month')
-            
         user_growth_map = {item['month'].month: item['count'] for item in user_growth_query}
-        
         user_growth_data = []
         for month_num in range(1, 13):
             month_name = datetime(now.year, month_num, 1).strftime('%b')
             user_growth_data.append({"month": month_name, "count": user_growth_map.get(month_num, 0)})
-            
         stories_by_month_query = StoryProject.objects.filter(created_at__gte=one_year_ago) \
             .annotate(month=TruncMonth('created_at')) \
             .values('month') \
             .annotate(count=Count('id')) \
             .order_by('month')
-        
         stories_by_month_map = {item['month'].month: item['count'] for item in stories_by_month_query}
-        
         stories_by_month_data = []
         for month_num in range(1, 13):
             month_name = datetime(now.year, month_num, 1).strftime('%b')
             stories_by_month_data.append({"month": month_name, "count": stories_by_month_map.get(month_num, 0)})
-
         top_stories_query = StoryProject.objects.order_by('-read_count', '-likes_count')[:5] \
             .values('theme', 'read_count', 'likes_count', 'shares_count', 'tags', 'audio_duration_seconds')
-
         top_stories_data = []
         for story in top_stories_query:
             reading_time = "N/A"
             if story.get('audio_duration_seconds'):
                 minutes = round(story['audio_duration_seconds'] / 60)
                 reading_time = f"{minutes} min"
-            
             top_stories_data.append({
-                "theme": story.get('theme'),
-                "read_count": story.get('read_count'),
-                "likes_count": story.get('likes_count'),
-                "shares_count": story.get('shares_count'),
-                "tags": story.get('tags'),
-                "reading_time": reading_time
+                "theme": story.get('theme'), "read_count": story.get('read_count'),
+                "likes_count": story.get('likes_count'), "shares_count": story.get('shares_count'),
+                "tags": story.get('tags'), "reading_time": reading_time
             })
-
         data = {
             'user_growth_over_time': user_growth_data,
             'stories_created_over_time': stories_by_month_data,
@@ -213,18 +193,30 @@ class AnalyticsAPIView(APIView):
 class SiteSettingsView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAdminUser]
     serializer_class = SiteSettingsSerializer
-
     def get_object(self):
         return SiteSettings.load()
-
     def get(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
-
     def put(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+class TimezoneListView(APIView):
+    permission_classes = [IsAdminUser]
+    def get(self, request):
+        return Response(pytz.all_timezones)
+
+class LanguageListView(APIView):
+    permission_classes = [IsAdminUser]
+    def get(self, request):
+        languages = [
+            {"code": "en", "name": "English"}, {"code": "es", "name": "Spanish"},
+            {"code": "fr", "name": "French"}, {"code": "de", "name": "German"},
+            {"code": "it", "name": "Italian"}, {"code": "pt", "name": "Portuguese"},
+        ]
+        return Response(languages)
