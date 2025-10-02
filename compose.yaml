@@ -10,7 +10,7 @@ services:
     command: ["daphne", "-b", "0.0.0.0", "-p", "8000", "magictale.asgi:application"]
     volumes:
       - static_volume:/app/staticfiles
-      - ./media:/app/media
+      - /home/fkaisar/magictale/media:/app/media  
     depends_on:
       - postgres-db
       - redis-cache
@@ -26,7 +26,7 @@ services:
     env_file: ./.env
     command: ["celery", "-A", "magictale", "worker", "--loglevel=info"]
     volumes:
-      - ./media:/app/media
+      - /home/fkaisar/magictale/media:/app/media  
     depends_on:
       - postgres-db
       - redis-cache
@@ -42,7 +42,7 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - static_volume:/app/staticfiles
-      - ./media:/app/media
+      - /home/fkaisar/magictale/media:/app/media 
     depends_on:
       - python-app
     networks:
