@@ -75,42 +75,29 @@ async def run_generation_async(project_id: int):
     try:
         system_prompt = """
 You are "MagicTale," a world-renowned children's storyteller. Your voice is gentle, warm, and full of wonder. You must always be positive, encouraging, and kind in your narration.
-Your rules are:
-- Use simple, age-appropriate language that is easy for a child to understand.
-- Keep sentences clear and relatively short to make them easy to follow and narrate.
-- Weave in themes of friendship, courage, kindness, and curiosity.
-- Avoid any scary, negative, or complex themes. Your goal is to create a comforting and magical experience.
-- Write the story as a single, continuous narrative.
+Your rules are: - Use simple, age-appropriate language. - Keep sentences clear and short. - Weave in themes of friendship, courage, and kindness. - Avoid scary or negative themes. - Write the story as a single, continuous narrative.
 """
         story_subject = project.custom_prompt.strip() or f"A story about: {project.theme}"
         user_prompt = f"""
-Please write a complete {project.length} story using the following details:
-- Language: {project.language}
-- Child's Name: {project.child_name}
-- Child's Pronouns: {project.pronouns}
-- Child's Age: {project.age}
-- Story Details: {story_subject}
-- Favorite Animal to include: {project.favorite_animal}
-- Favorite Color to include: {project.favorite_color}
+Please write a complete {project.length} story using these details:
+- Language: {project.language}, Child's Name: {project.child_name}, Pronouns: {project.pronouns}, Age: {project.age}
+- Story Details: {story_subject}, Favorite Animal: {project.favorite_animal}, Favorite Color: {project.favorite_color}
 - Reading Difficulty Target: {project.difficulty}/5
 """
         await _send(project_id, {"message": "Whispering to the story spirits...", "progress": 15})
         token_limit = LENGTH_TO_TOKENS.get(project.length, 1000)
         text_resp = await asyncio.to_thread(
-            client.chat.completions.create,
-            model=project.model_used or settings.AI_TEXT_MODEL,
+            client.chat.completions.create, model=project.model_used or settings.AI_TEXT_MODEL,
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
             temperature=0.8, timeout=90.0, max_tokens=token_limit
         )
         full_text = text_resp.choices[0].message.content.strip() if text_resp.choices else ""
         await _save_project_fields(project, {"text": full_text})
         await _update_progress(project, progress=30)
-
         await _send(project_id, {"message": "Summarizing the adventure...", "progress": 40})
         synopsis_prompt = _build_synopsis_prompt(full_text)
         synopsis_resp = await asyncio.to_thread(
-            client.chat.completions.create,
-            model=settings.AI_TEXT_MODEL,
+            client.chat.completions.create, model=settings.AI_TEXT_MODEL,
             messages=[{"role": "user", "content": synopsis_prompt}],
             response_format={"type": "json_object"}, temperature=0.5
         )
@@ -122,41 +109,54 @@ Please write a complete {project.length} story using the following details:
         except (json.JSONDecodeError, IndexError):
             metadata = {"synopsis": "A magical adventure awaits!"}
         await _update_progress(project, progress=50)
-
         await _send(project_id, {"message": "Creating the cover art...", "progress": 60})
         image_prompt = _build_cover_image_prompt(metadata.get("synopsis", project.theme), project)
         image_resp = await asyncio.to_thread(
-            client.images.generate,
-            model=settings.AI_IMAGE_MODEL,
+            client.images.generate, model=settings.AI_IMAGE_MODEL,
             prompt=image_prompt, n=1, size="1024x1024", response_format="url", timeout=120.0
         )
         image_url = image_resp.data[0].url if image_resp.data else ""
         await _save_project_fields(project, {"image_url": image_url, "cover_image_url": image_url})
         await _update_progress(project, progress=80)
-
         await _send(project_id, {"message": "Recording the narration...", "progress": 90})
         audio_resp = await asyncio.to_thread(
-            client.audio.speech.create,
-            model=settings.AI_AUDIO_MODEL,
-            voice=project.voice or "alloy",
-            input=full_text, timeout=180.0
+            client.audio.speech.create, model=settings.AI_AUDIO_MODEL,
+            voice=project.voice or "alloy", input=full_text, timeout=180.0
         )
         
-        file_path_name = f"audio/story_{project.id}.mp3"
-        saved_file_path = await sync_to_async(default_storage.save)(file_path_name, ContentFile(audio_resp.content))
-        audio_url = await sync_to_async(default_storage.url)(saved_file_path)
-        
+        audio_url_to_save = None
         duration_seconds = 0
         try:
+            print("--- ATTEMPTING TO GET AUDIO CONTENT ---")
             audio_content = audio_resp.content
-            audio_file_like_object = io.BytesIO(audio_content)
-            audio_info = MP3(audio_file_like_object)
-            duration_seconds = int(audio_info.info.length)
+            print(f"--- SUCCESS: Got audio content, size: {len(audio_content)} bytes ---")
+            
+            file_path_name = f"audio/story_{project.id}.mp3"
+            
+            print(f"--- ATTEMPTING TO SAVE TO STORAGE at {file_path_name} ---")
+            saved_file_path = await sync_to_async(default_storage.save)(file_path_name, ContentFile(audio_content))
+            print(f"--- SUCCESS: File saved by storage system to path: {saved_file_path} ---")
+            
+            audio_url_to_save = await sync_to_async(default_storage.url)(saved_file_path)
+            print(f"--- SUCCESS: Generated final URL: {audio_url_to_save} ---")
+
+            try:
+                print("--- ATTEMPTING TO READ DURATION FROM IN-MEMORY CONTENT ---")
+                audio_file_like_object = io.BytesIO(audio_content)
+                audio_info = MP3(audio_file_like_object)
+                duration_seconds = int(audio_info.info.length)
+                print(f"--- SUCCESS: Calculated duration: {duration_seconds} seconds ---")
+            except Exception as e:
+                print(f"--- WARNING: Could not read audio duration. Error: {e} ---")
+        
         except Exception as e:
-            print(f"Could not read audio duration for project {project.id}: {e}")
+            print(f"--- FATAL ERROR: FAILED DURING AUDIO SAVING/PROCESSING. Error: {e} ---")
+            error_message = f"Audio processing failed: {e}"
+            await _update_progress(project, status="failed", error=error_message)
+            return 
         
         await _save_project_fields(project, {
-            "audio_url": audio_url,
+            "audio_url": audio_url_to_save,
             "audio_duration_seconds": duration_seconds
         })
 
