@@ -64,7 +64,8 @@ USE_S3_STORAGE = os.getenv('USE_S3_STORAGE', 'False').lower() == 'true'
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
-MEDIA_ROOT = '/app/media'
+# === THIS IS THE FIX ===
+MEDIA_ROOT = BASE_DIR / 'media'
 
 if USE_S3_STORAGE:
     DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
