@@ -65,7 +65,7 @@ class DashboardUserSerializer(serializers.ModelSerializer):
     plan = serializers.CharField(source='subscription.get_plan_display', read_only=True, default='Free')
     profile_picture_url = serializers.SerializerMethodField()
     date = serializers.DateTimeField(source='date_joined', format='%b %d, %Y')
-    name = serializers.CharField(source='get_full_name')
+    name = serializers.CharField(source='username')
     class Meta:
         model = User
         fields = ['id', 'profile_picture_url', 'name', 'email', 'date', 'plan']
