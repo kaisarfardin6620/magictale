@@ -1,6 +1,7 @@
 import asyncio
 import os
 import json
+import io
 from pathlib import Path
 from django.utils import timezone
 from asgiref.sync import sync_to_async
@@ -72,9 +73,27 @@ async def run_generation_async(project_id: int):
     await _send(project_id, {"status": "running", "progress": 5})
 
     try:
-        system_prompt = "You are \"MagicTale,\" a world-renowned children's storyteller..." 
+        system_prompt = """
+You are "MagicTale," a world-renowned children's storyteller. Your voice is gentle, warm, and full of wonder. You must always be positive, encouraging, and kind in your narration.
+Your rules are:
+- Use simple, age-appropriate language that is easy for a child to understand.
+- Keep sentences clear and relatively short to make them easy to follow and narrate.
+- Weave in themes of friendship, courage, kindness, and curiosity.
+- Avoid any scary, negative, or complex themes. Your goal is to create a comforting and magical experience.
+- Write the story as a single, continuous narrative.
+"""
         story_subject = project.custom_prompt.strip() or f"A story about: {project.theme}"
-        user_prompt = f"Please write a complete {project.length} story..." 
+        user_prompt = f"""
+Please write a complete {project.length} story using the following details:
+- Language: {project.language}
+- Child's Name: {project.child_name}
+- Child's Pronouns: {project.pronouns}
+- Child's Age: {project.age}
+- Story Details: {story_subject}
+- Favorite Animal to include: {project.favorite_animal}
+- Favorite Color to include: {project.favorite_color}
+- Reading Difficulty Target: {project.difficulty}/5
+"""
         await _send(project_id, {"message": "Whispering to the story spirits...", "progress": 15})
         token_limit = LENGTH_TO_TOKENS.get(project.length, 1000)
         text_resp = await asyncio.to_thread(
@@ -86,6 +105,7 @@ async def run_generation_async(project_id: int):
         full_text = text_resp.choices[0].message.content.strip() if text_resp.choices else ""
         await _save_project_fields(project, {"text": full_text})
         await _update_progress(project, progress=30)
+
         await _send(project_id, {"message": "Summarizing the adventure...", "progress": 40})
         synopsis_prompt = _build_synopsis_prompt(full_text)
         synopsis_resp = await asyncio.to_thread(
@@ -102,6 +122,7 @@ async def run_generation_async(project_id: int):
         except (json.JSONDecodeError, IndexError):
             metadata = {"synopsis": "A magical adventure awaits!"}
         await _update_progress(project, progress=50)
+
         await _send(project_id, {"message": "Creating the cover art...", "progress": 60})
         image_prompt = _build_cover_image_prompt(metadata.get("synopsis", project.theme), project)
         image_resp = await asyncio.to_thread(
@@ -112,6 +133,7 @@ async def run_generation_async(project_id: int):
         image_url = image_resp.data[0].url if image_resp.data else ""
         await _save_project_fields(project, {"image_url": image_url, "cover_image_url": image_url})
         await _update_progress(project, progress=80)
+
         await _send(project_id, {"message": "Recording the narration...", "progress": 90})
         audio_resp = await asyncio.to_thread(
             client.audio.speech.create,
@@ -126,10 +148,10 @@ async def run_generation_async(project_id: int):
         
         duration_seconds = 0
         try:
-            with audio_resp.stream_to_file("temp_audio.mp3") as temp_file:
-                 audio_file = MP3(temp_file.name)
-                 duration_seconds = int(audio_file.info.length)
-                 os.remove(temp_file.name)
+            audio_content = audio_resp.content
+            audio_file_like_object = io.BytesIO(audio_content)
+            audio_info = MP3(audio_file_like_object)
+            duration_seconds = int(audio_info.info.length)
         except Exception as e:
             print(f"Could not read audio duration for project {project.id}: {e}")
         
