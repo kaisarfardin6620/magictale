@@ -17,7 +17,7 @@ from .models import StoryProject, GenerationEvent
 client = OpenAI(api_key=getattr(settings, "OPENAI_API_KEY", None))
 
 LENGTH_TO_TOKENS = {
-    "short": 1500, "medium": 2500, "long": 3500,
+    "short": 1000, "medium": 2000, "long": 3000,
 }
 
 @sync_to_async
