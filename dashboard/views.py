@@ -148,18 +148,17 @@ class TimezoneListView(APIView):
 
 class LanguageListView(APIView):
     permission_classes = [IsAdminUser]
-    def get(self, request): return Response([{"code": "en", "name": "English"}, {"code": "es", "name": "Spanish"}, {"code": "fr", "name": "French"}, {"code": "de", "name": "German"}, {"code": "it", "name": "Italian"}, {"code": "pt", "name": "Portuguese"}])
+    def get(self, request):
+        languages = [{"code": code, "name": str(name)} for code, name in settings.LANGUAGES]
+        return Response(languages)
 
 class AdminProfileView(APIView):
     permission_classes = [IsAdminUser]
-
     def get(self, request):
         serializer = AdminProfileSerializer(request.user)
         return Response(serializer.data)
-
     def post(self, request):
         user = request.user
-        
         if 'new_password' in request.data and 'current_password' in request.data:
             serializer = AdminChangePasswordSerializer(data=request.data, context={'request': request})
             serializer.is_valid(raise_exception=True)
@@ -167,9 +166,7 @@ class AdminProfileView(APIView):
             user.save()
             OutstandingToken.objects.filter(user=user).delete()
             return Response({"message": "Password changed successfully."}, status=status.HTTP_200_OK)
-        
         serializer = AdminProfileUpdateSerializer(instance=user, data=request.data, context={'request': request}, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        
         return Response(AdminProfileSerializer(user).data, status=status.HTTP_200_OK)

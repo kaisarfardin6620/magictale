@@ -45,7 +45,6 @@ class SignupAPIView(APIView):
         serializer = SignupSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-
             now = timezone.now()
             Subscription.objects.create(
                 user=user,
@@ -54,13 +53,10 @@ class SignupAPIView(APIView):
                 trial_start=now,
                 trial_end=now + timedelta(days=14)
             )
-
             UserActivityLog.objects.create(user=user, activity_type='signup', ip_address=get_client_ip(request))
             token = AuthToken.objects.create(user=user, token_type='email_verification')
-            
             verification_path = reverse('email_verification') + f'?token={token.token}'
             verification_url = f"{settings.BACKEND_BASE_URL}{verification_path}"
-
             html_message = render_to_string('emails/signup_verification_email.html', {'username': user.username, 'verification_url': verification_url})
             plain_message = f'Please click the link to verify your email: {verification_url}'
             send_email('Verify your email for MagicTale', plain_message, [user.email], html_message=html_message)
@@ -105,7 +101,6 @@ class ResendVerificationEmailAPIView(APIView):
                 token = AuthToken.objects.create(user=user, token_type='email_verification')
                 verification_path = reverse('email_verification') + f'?token={token.token}'
                 verification_url = f"{settings.BACKEND_BASE_URL}{verification_path}"
-
                 html_message = render_to_string('emails/signup_verification_email.html', {'username': user.username, 'verification_url': verification_url})
                 send_email('Verify your email', f'Link: {verification_url}', [user.email], html_message=html_message)
                 return Response({"message": "Verification email has been resent."}, status=status.HTTP_200_OK)
@@ -137,7 +132,6 @@ class ProfileView(APIView):
         except UserProfile.DoesNotExist:
             return Response({'detail': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-
 class PasswordResetInitiateAPIView(APIView):
     permission_classes = [AllowAny]
     def post(self, request):
@@ -167,7 +161,6 @@ class PasswordResetConfirmView(APIView):
         except AuthToken.DoesNotExist:
             context = {'error_message': 'This password reset link is invalid or has expired.', 'home_url': settings.FRONTEND_URL}
             return render(request, 'verification/verification_error.html', context, status=status.HTTP_400_BAD_REQUEST)
-
     def post(self, request, token=None):
         try:
             token_obj = AuthToken.objects.get(token=token, token_type="password_reset", is_used=False)
@@ -208,6 +201,12 @@ class DeleteAccountView(APIView):
         request.user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+class UserLanguageListView(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+        languages = [{"code": code, "name": str(name)} for code, name in settings.LANGUAGES]
+        return Response(languages)
+
 class LanguagePreferenceView(APIView):
     permission_classes = [IsAuthenticated]
     def get(self, request):
@@ -219,25 +218,20 @@ class LanguagePreferenceView(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 class GoogleLoginView(APIView):
     permission_classes = [AllowAny]
-
     def post(self, request):
         access_token = request.data.get("access_token")
         if not access_token:
             return Response({"detail": "An access token from Google is required."}, status=status.HTTP_400_BAD_REQUEST)
-
         try:
             adapter = GoogleOAuth2Adapter(request)
             app = adapter.get_provider().get_app(request)
             client = OAuth2Client(
-                request,
-                app.client_id,
-                app.secret,
-                adapter.access_token_method,
-                adapter.access_token_url,
-                adapter.callback_url,
-                adapter.scope,
+                request, app.client_id, app.secret,
+                adapter.access_token_method, adapter.access_token_url,
+                adapter.callback_url, adapter.scope
             )
             social_token = client.parse_token({"access_token": access_token})
             social_token.app = app
@@ -246,7 +240,6 @@ class GoogleLoginView(APIView):
             login.save(request)
             user = login.user
             refresh = RefreshToken.for_user(user)
-
             access_token_obj = refresh.access_token
             access_token_obj['username'] = user.username
             try:
@@ -257,11 +250,7 @@ class GoogleLoginView(APIView):
                 access_token_obj['plan'] = None
                 access_token_obj['subscription_status'] = 'inactive'
             
-            return Response({
-                'refresh': str(refresh),
-                'access': str(access_token_obj)
-            }, status=status.HTTP_200_OK)
-
+            return Response({'refresh': str(refresh), 'access': str(access_token_obj)}, status=status.HTTP_200_OK)
         except Exception as e:
             print(f"Google authentication error: {e}")
             return Response({"detail": f"An error occurred during Google authentication. Please try again."}, status=status.HTTP_400_BAD_REQUEST)

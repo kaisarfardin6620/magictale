@@ -84,7 +84,6 @@ class PasswordHistory(models.Model):
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-        # Keep only last 10 passwords (delete oldest if more than 10)
         histories = PasswordHistory.objects.filter(user=self.user).order_by('-created_at')
         if histories.count() > 10:
             oldest = PasswordHistory.objects.filter(user=self.user).order_by('created_at').first()
