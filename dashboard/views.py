@@ -127,7 +127,7 @@ class AnalyticsAPIView(APIView):
         top_stories_query = StoryProject.objects.order_by('-read_count', '-likes_count')[:5].values('theme', 'read_count', 'likes_count', 'shares_count', 'tags', 'audio_duration_seconds')
         top_stories_data = []
         for story in top_stories_query:
-            minutes = round(story.get('audio_duration_seconds', 0) / 60)
+            minutes = round((story.get('audio_duration_seconds') or 0) / 60)
             top_stories_data.append({"theme": story.get('theme'), "read_count": story.get('read_count'), "likes_count": story.get('likes_count'), "shares_count": story.get('shares_count'), "tags": story.get('tags'), "reading_time": f"{minutes} min" if story.get('audio_duration_seconds') else "N/A"})
         return Response({'user_growth_over_time': user_growth_data, 'stories_created_over_time': stories_by_month_data, 'top_performing_stories': top_stories_data})
 
