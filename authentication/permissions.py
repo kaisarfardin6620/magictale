@@ -1,6 +1,7 @@
 from rest_framework import permissions
 from django.utils import timezone
-from django.contrib.auth.models import User 
+from django.contrib.auth.models import User
+
 class HasActiveSubscription(permissions.BasePermission):
     message = "An active subscription or trial is required to use this feature."
 
@@ -15,7 +16,11 @@ class HasActiveSubscription(permissions.BasePermission):
             self.message = "You do not have a subscription or trial."
             return False
 
-        is_paid_active = subscription.status == 'active'
+        is_paid_active = (
+            subscription.status == 'active' and 
+            subscription.current_period_end is not None and 
+            subscription.current_period_end > timezone.now()
+        )
         is_in_trial = (
             subscription.status == 'trialing' and
             subscription.trial_end is not None and
@@ -36,6 +41,10 @@ class IsOwner(permissions.BasePermission):
         return False
 
 class IsStoryMaster(permissions.BasePermission):
+    """
+    Allows access to users with the 'master' plan OR users in a valid trial.
+    This protects Tier 2 features while allowing trial users to experience them.
+    """
     message = "This feature requires a Story Master subscription."
 
     def has_permission(self, request, view):
@@ -46,7 +55,15 @@ class IsStoryMaster(permissions.BasePermission):
         try:
             subscription = user.subscription
         except (AttributeError, User.subscription.RelatedObjectDoesNotExist):
-            self.message = "You do not have a subscription."
+            self.message = "You do not have a subscription or trial."
             return False
         
-        return subscription.plan == 'master' and subscription.status == 'active'
+        is_active_master = subscription.plan == 'master' and subscription.status == 'active'
+        
+        is_in_trial = (
+            subscription.status == 'trialing' and
+            subscription.trial_end is not None and
+            subscription.trial_end > timezone.now()
+        )
+        
+        return is_active_master or is_in_trial

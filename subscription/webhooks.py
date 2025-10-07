@@ -4,7 +4,7 @@ from django.conf import settings
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
-from .models import Subscription, ProcessedStripeEvent 
+from .models import Subscription, ProcessedStripeEvent
 from .serializers import SubscriptionSerializer
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -36,14 +36,9 @@ def _update_subscription_from_stripe_object(subscription_model, stripe_sub_objec
     subscription_model.stripe_subscription_id = stripe_sub_object.id
     subscription_model.status = stripe_sub_object.status
     try:
-        if 'items' in stripe_sub_object and 'data' in stripe_sub_object['items']:
-            price = stripe_sub_object['items']['data'][0]['price']
-            if 'lookup_key' in price and price['lookup_key']:
-                lookup_key = price['lookup_key']
-                logger.info(f"Found lookup_key '{lookup_key}' in Stripe. Setting as local plan.")
-                subscription_model.plan = lookup_key
-            else:
-                logger.warning(f"Price object for {stripe_sub_object.id} did not have a lookup_key. Plan will not be updated.")
+        price = stripe_sub_object['items']['data'][0]['price']
+        if 'lookup_key' in price and price['lookup_key']:
+            subscription_model.plan = price['lookup_key']
     except (AttributeError, IndexError, KeyError) as e:
         logger.warning(f"Could not get plan from lookup_key on subscription {stripe_sub_object.id}: {e}")
 
@@ -52,75 +47,56 @@ def _update_subscription_from_stripe_object(subscription_model, stripe_sub_objec
     current_period_end_ts = getattr(stripe_sub_object, 'current_period_end', None)
     canceled_at_ts = getattr(stripe_sub_object, 'canceled_at', None)
 
-    subscription_model.trial_start = datetime.datetime.fromtimestamp(trial_start_ts, tz=datetime.timezone.utc) if trial_start_ts else None
-    subscription_model.trial_end = datetime.datetime.fromtimestamp(trial_end_ts, tz=datetime.timezone.utc) if trial_end_ts else None
-    subscription_model.current_period_end = datetime.datetime.fromtimestamp(current_period_end_ts, tz=datetime.timezone.utc) if current_period_end_ts else None
-    subscription_model.canceled_at = datetime.datetime.fromtimestamp(canceled_at_ts, tz=datetime.timezone.utc) if canceled_at_ts else None
+    subscription_model.trial_start = datetime.datetime.fromtimestamp(trial_start_ts, tz=timezone.utc) if trial_start_ts else None
+    subscription_model.trial_end = datetime.datetime.fromtimestamp(trial_end_ts, tz=timezone.utc) if trial_end_ts else None
+    subscription_model.current_period_end = datetime.datetime.fromtimestamp(current_period_end_ts, tz=timezone.utc) if current_period_end_ts else None
+    subscription_model.canceled_at = datetime.datetime.fromtimestamp(canceled_at_ts, tz=timezone.utc) if canceled_at_ts else None
+    
     try:
         subscription_model.save()
         logger.info(f"SUCCESS: Subscription {subscription_model.id} for user {subscription_model.user.id} updated to status '{subscription_model.status}'")
     except Exception as e:
-        logger.error(f"DATABASE SAVE FAILED for subscription {subscription_model.id}. CHECK LOOKUP_KEY CASE. Error: {e}")
+        logger.error(f"DATABASE SAVE FAILED for subscription {subscription_model.id}. Error: {e}")
         raise e
 
     _send_subscription_update(subscription_model)
 
-def handle_subscription_event(data_object):
-    event_type = data_object.get('object', 'unknown')
-    logger.info(f"Handling subscription event for object type: '{event_type}'")
 
-    subscription_id = None
-    customer_id = data_object.get('customer')
-
-    if event_type == 'subscription':
-        subscription_id = data_object.get('id')
-    else:
-        subscription_id = data_object.get('subscription')
-
-    if not subscription_id:
-        logger.warning(f"Webhook event of type '{event_type}' has no subscription ID. This may be normal. Ignoring.")
+def handle_checkout_session_completed(session_object):
+    customer_id = session_object.get('customer')
+    subscription_id = session_object.get('subscription')
+    
+    if not customer_id or not subscription_id:
+        logger.error("Checkout session completed event is missing customer_id or subscription_id.")
         return
 
-    logger.info(f"Extracted Stripe Subscription ID: {subscription_id}")
-    logger.info(f"Extracted Stripe Customer ID: {customer_id}")
+    try:
+        subscription_model = Subscription.objects.get(stripe_customer_id=customer_id)
+        stripe_sub = stripe.Subscription.retrieve(subscription_id)
+        _update_subscription_from_stripe_object(subscription_model, stripe_sub)
+    except Subscription.DoesNotExist:
+        logger.critical(f"FATAL: Received checkout.session.completed for customer {customer_id} but no matching subscription was found.")
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe API error while handling checkout session {session_object.id}: {e}")
+
+def handle_customer_subscription_event(subscription_object):
+    subscription_id = subscription_object.get('id')
+    if not subscription_id:
+        logger.error("customer.subscription event is missing subscription ID.")
+        return
 
     try:
-        logger.info(f"Fetching full subscription object for '{subscription_id}' from Stripe API...")
-        stripe_sub = stripe.Subscription.retrieve(subscription_id)
-        logger.info(f"Successfully fetched Stripe subscription object. Status: '{stripe_sub.status}'")
-
-        subscription_model = None
-        try:
-            subscription_model = Subscription.objects.get(stripe_subscription_id=stripe_sub.id)
-            logger.info(f"Found local subscription model using stripe_subscription_id: {stripe_sub.id}")
-        except Subscription.DoesNotExist:
-            logger.warning(f"Could not find local subscription with stripe_subscription_id={stripe_sub.id}. Falling back to customer_id.")
-            if customer_id:
-                try:
-                    subscription_model = Subscription.objects.get(stripe_customer_id=customer_id)
-                    logger.info(f"Found local subscription model using stripe_customer_id: {customer_id}")
-                except Subscription.DoesNotExist:
-                    logger.critical(f"FATAL: No local subscription found for EITHER stripe_subscription_id OR stripe_customer_id ({customer_id}). Cannot update.")
-                    return
-            else:
-                logger.critical("FATAL: Cannot find local subscription and no customer_id was provided to fall back on.")
-                return
-
-        if subscription_model:
-            _update_subscription_from_stripe_object(subscription_model, stripe_sub)
-
-    except stripe.error.StripeError as e:
-        logger.error(f"Stripe API error while processing subscription {subscription_id}: {e}")
+        subscription_model = Subscription.objects.get(stripe_subscription_id=subscription_id)
+        _update_subscription_from_stripe_object(subscription_model, subscription_object)
+    except Subscription.DoesNotExist:
+        logger.warning(f"Received subscription update for {subscription_id} but no matching subscription was found.")
     except Exception as e:
-        logger.critical(f"An unexpected error occurred in handle_subscription_event for subscription {subscription_id}: {e}")
-        raise
+        logger.critical(f"Unexpected error in handle_customer_subscription_event for {subscription_id}: {e}")
 
 EVENT_HANDLER_MAP = {
-    "checkout.session.completed": handle_subscription_event,
-    "customer.subscription.updated": handle_subscription_event,
-    "customer.subscription.deleted": handle_subscription_event,
-    "invoice.payment_succeeded": handle_subscription_event,
-    "invoice.paid": handle_subscription_event,
+    "checkout.session.completed": handle_checkout_session_completed,
+    "customer.subscription.updated": handle_customer_subscription_event,
+    "customer.subscription.deleted": handle_customer_subscription_event,
 }
 
 @csrf_exempt
@@ -153,5 +129,4 @@ def stripe_webhook(request):
             logger.critical(f"FATAL ERROR processing webhook {event.get('id', 'unknown')}: {e}\n{traceback.format_exc()}")
     else:
         logger.warning(f"Unhandled event type: '{event['type']}'")
-
     return HttpResponse(status=200)
