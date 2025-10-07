@@ -1,3 +1,5 @@
+# dashboard/views.py
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
@@ -25,6 +27,12 @@ from django.db.models.functions import TruncMonth
 from django.conf import settings
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
+from rest_framework import viewsets
+from rest_framework.decorators import action
+from authentication.utils import send_email
+from django.template.loader import render_to_string
+from authentication.models import UserProfile
+
 
 class DashboardStatsAPIView(APIView):
     permission_classes = [IsAdminUser]
@@ -154,19 +162,79 @@ class LanguageListView(APIView):
 
 class AdminProfileView(APIView):
     permission_classes = [IsAdminUser]
+    
     def get(self, request):
+        UserProfile.objects.get_or_create(user=request.user)
         serializer = AdminProfileSerializer(request.user)
         return Response(serializer.data)
-    def post(self, request):
+
+    def put(self, request):
         user = request.user
+        
+        # --- THIS IS THE NEW, COMBINED LOGIC ---
+        
+        # Part 1: Handle password change if password fields are present
         if 'new_password' in request.data and 'current_password' in request.data:
-            serializer = AdminChangePasswordSerializer(data=request.data, context={'request': request})
-            serializer.is_valid(raise_exception=True)
-            user.set_password(serializer.validated_data['new_password'])
-            user.save()
+            password_serializer = AdminChangePasswordSerializer(data=request.data, context={'request': request})
+            if password_serializer.is_valid():
+                user.set_password(password_serializer.validated_data['new_password'])
+                # We will save the user at the end.
+            else:
+                return Response(password_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # Part 2: Handle profile data update
+        profile_serializer = AdminProfileUpdateSerializer(instance=user, data=request.data, context={'request': request}, partial=True)
+        if profile_serializer.is_valid():
+            profile_serializer.save() # This now correctly saves both User and UserProfile
+        else:
+            return Response(profile_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        # If a password was changed, log the user out of all other sessions
+        if 'new_password' in request.data:
             OutstandingToken.objects.filter(user=user).delete()
-            return Response({"message": "Password changed successfully."}, status=status.HTTP_200_OK)
-        serializer = AdminProfileUpdateSerializer(instance=user, data=request.data, context={'request': request}, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(AdminProfileSerializer(user).data, status=status.HTTP_200_OK)
+
+        # Return the final, updated profile data
+        final_serializer = AdminProfileSerializer(user)
+        return Response(final_serializer.data, status=status.HTTP_200_OK)
+
+
+class UserManagementViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAdminUser]
+    serializer_class = DashboardUserSerializer
+    queryset = User.objects.select_related('profile', 'subscription').order_by('-date_joined')
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['is_active']
+    search_fields = ['first_name', 'last_name', 'email', 'username']
+
+    @action(detail=True, methods=['post'], url_path='approve')
+    def approve_user(self, request, pk=None):
+        user = self.get_object()
+        if user.is_active:
+            return Response({'detail': 'User is already active.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        user.is_active = True
+        user.save()
+
+        html_message = render_to_string('emails/account_approved_email.html', {'username': user.username, 'login_url': f"{settings.FRONTEND_URL}/login"})
+        plain_message = f"Congratulations! Your MagicTale account has been approved. You can now log in at {settings.FRONTEND_URL}/login"
+        send_email('Your MagicTale Account is Approved!', plain_message, [user.email], html_message=html_message)
+
+        return Response({'status': 'User approved and notified successfully.'}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='deny')
+    def deny_user(self, request, pk=None):
+        user = self.get_object()
+        email = user.email
+        user.delete()
+        
+        send_email('MagicTale Account Application Update', 'We regret to inform you that your account application was not approved at this time.', [email])
+        
+        return Response({'status': f'User {email} has been denied and deleted.'}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='deactivate')
+    def deactivate_user(self, request, pk=None):
+        user = self.get_object()
+        user.is_active = False
+        user.save()
+        OutstandingToken.objects.filter(user=user).delete()
+        return Response({'status': 'User has been deactivated.'}, status=status.HTTP_200_OK)

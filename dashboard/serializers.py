@@ -1,3 +1,5 @@
+# dashboard/serializers.py
+
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from subscription.models import Subscription
@@ -101,38 +103,52 @@ class AdminProfileSerializer(serializers.ModelSerializer):
             return f"{settings.BACKEND_BASE_URL}{obj.profile.profile_picture.url}"
         return None
 
-class AdminProfileUpdateSerializer(serializers.Serializer):
-    first_name = serializers.CharField(required=False)
-    last_name = serializers.CharField(required=False)
-    email = serializers.EmailField(required=False)
-    phone_number = serializers.CharField(required=False, allow_blank=True)
-    profile_picture = serializers.ImageField(required=False, allow_null=True)
+class AdminProfileUpdateSerializer(serializers.ModelSerializer):
+    phone_number = serializers.CharField(source='profile.phone_number', required=False, allow_blank=True)
+    profile_picture = serializers.ImageField(source='profile.profile_picture', required=False, allow_null=True)
+
+    class Meta:
+        model = User
+        fields = ['first_name', 'last_name', 'email', 'phone_number', 'profile_picture']
+
     def validate_email(self, value):
         user = self.context['request'].user
-        if User.objects.filter(email=value).exclude(pk=user.pk).exists():
+        if User.objects.filter(email__iexact=value).exclude(pk=user.pk).exists():
             raise serializers.ValidationError("This email address is already in use by another account.")
         return value
+
     def update(self, instance, validated_data):
-        instance.first_name = validated_data.get('first_name', instance.first_name)
-        instance.last_name = validated_data.get('last_name', instance.last_name)
-        instance.email = validated_data.get('email', instance.email)
-        instance.username = validated_data.get('email', instance.username)
-        instance.save()
-        profile, created = UserProfile.objects.get_or_create(user=instance)
-        profile.phone_number = validated_data.get('phone_number', profile.phone_number)
-        if 'profile_picture' in validated_data:
-            profile.profile_picture = validated_data.get('profile_picture')
-        profile.save()
+        # --- THIS IS THE CORRECTED LOGIC ---
+        profile_data = validated_data.pop('profile', {})
+        
+        # Update the User fields using the standard ModelSerializer method
+        instance = super().update(instance, validated_data)
+        
+        # **CRITICAL FIX**: If the email was changed, we MUST also update the username
+        if 'email' in validated_data:
+            instance.username = validated_data['email']
+            instance.save()
+
+        # Now, update the related UserProfile fields
+        profile = instance.profile
+        if profile_data:
+            profile.phone_number = profile_data.get('phone_number', profile.phone_number)
+            if 'profile_picture' in profile_data:
+                profile.profile_picture = profile_data.get('profile_picture', profile.profile_picture)
+            profile.save()
+
         return instance
 
 class AdminChangePasswordSerializer(serializers.Serializer):
     current_password = serializers.CharField(write_only=True, required=True)
     new_password = serializers.CharField(write_only=True, required=True, validators=[PasswordValidator.validate_password_strength])
+    
     def validate_current_password(self, value):
         user = self.context['request'].user
         if not user.check_password(value):
             raise serializers.ValidationError("Your current password is not correct.")
         return value
+    
     def validate(self, data):
         user = self.context['request'].user
         if user.check_password(data['new_password']):
