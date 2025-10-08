@@ -6,7 +6,8 @@ venv
 .venv 
 postman.json
 __pycache__
-migrations
 __init__.py
 media
+data_only_backup.sql
+
 
