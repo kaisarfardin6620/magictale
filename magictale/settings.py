@@ -175,4 +175,4 @@ FCM_DJANGO_SETTINGS = {
     "ONE_DEVICE_PER_USER": False, "DELETE_INACTIVE_DEVICES": True,
     "FCM_CREDENTIALS": os.getenv('FIREBASE_SERVICE_ACCOUNT_PATH'),
 }
-AI_TEXT_MODEL, AI_IMAGE_MODEL, AI_AUDIO_MODEL = os.getenv("AI_TEXT_MODEL", "gpt-4o-mini"), os.getenv("AI_IMAGE_MODEL", "dall-e-3"), os.getenv("AI_AUDIO_MODEL", "tts-1")
+AI_TEXT_MODEL, AI_IMAGE_MODEL, AI_AUDIO_MODEL = os.getenv("AI_TEXT_MODEL", "gpt-4-turbo"), os.getenv("AI_IMAGE_MODEL", "dall-e-3"), os.getenv("AI_AUDIO_MODEL", "tts-1")
