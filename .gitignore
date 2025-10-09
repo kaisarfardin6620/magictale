@@ -8,6 +8,3 @@ postman.json
 __pycache__
 __init__.py
 media
-data_only_backup.sql
-
-

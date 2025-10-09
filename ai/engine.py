@@ -11,18 +11,20 @@ from openai import OpenAI
 from mutagen.mp3 import MP3
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from pydub import AudioSegment
+from django.utils.translation import gettext_lazy as _
 
-from .models import StoryProject, GenerationEvent
+from .models import StoryProject, GenerationEvent, StoryPage
 
 client = OpenAI(api_key=getattr(settings, "OPENAI_API_KEY", None))
 
 LENGTH_TO_TOKENS = {
-    "short": 1000, "medium": 2000, "long": 3000,
+    "short": 2000, "medium": 3000, "long": 5000,
 }
 
 @sync_to_async
 def _reload_project(project_id: int) -> StoryProject | None:
-    return StoryProject.objects.filter(pk=project_id).first()
+    return StoryProject.objects.prefetch_related('pages').filter(pk=project_id).first()
 
 @sync_to_async
 def _save_event(project: StoryProject, kind: str, payload: dict):
@@ -48,13 +50,24 @@ async def _send(project_id: int, event: dict):
     layer = get_channel_layer()
     await layer.group_send(f"story_{project_id}", {"type": "progress", "event": event})
 
+def _split_text_into_pages(full_text: str):
+    paragraphs = [p.strip() for p in full_text.split('\n') if p.strip()]
+    pages = []
+    for i in range(0, len(paragraphs), 3):
+        page_content = "\n\n".join(paragraphs[i:i+3]) 
+        pages.append(page_content)
+    return pages
+
 def _build_synopsis_prompt(story_text: str) -> str:
     return f"""
 You are a story analyst. Based on the following children's story, perform two tasks:
 1. Write a short, exciting one-paragraph synopsis (3-4 sentences).
 2. Suggest 3 relevant, single-word tags (e.g., Adventure, Friendship, Forest, Magic).
 Return your response in a JSON format like this: {{ "synopsis": "Your synopsis here.", "tags": "Tag1, Tag2, Tag3" }}
-Here is the story:\n---\n{story_text}\n---
+Here is the story:
+---
+{story_text}
+---
 """
 
 def _build_cover_image_prompt(synopsis: str, project: StoryProject) -> str:
@@ -65,6 +78,27 @@ The illustration should be vibrant, whimsical, and suitable for a young child, w
 Do not include any text, letters, words, or bubbles in the image.
 """
 
+async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
+    """
+    An individual, awaitable task to generate audio for a single page.
+    """
+    try:
+        audio_resp_chunk = await asyncio.to_thread(
+            client.audio.speech.create, model=settings.AI_AUDIO_MODEL,
+            voice=project.voice or "alloy", input=page.text, timeout=60.0
+        )
+        audio_content = audio_resp_chunk.content
+        
+        chunk_file_path = f"audio/chunks/story_{project.id}_page_{page.index}.mp3"
+        saved_chunk_path = await sync_to_async(default_storage.save)(chunk_file_path, ContentFile(audio_content))
+        page.audio_url = await sync_to_async(default_storage.url)(saved_chunk_path)
+        await sync_to_async(page.save)()
+        
+        return io.BytesIO(audio_content)
+    except Exception as e:
+        print(f"Failed to generate audio for page {page.index}: {e}")
+        return None
+
 async def run_generation_async(project_id: int):
     project = await _reload_project(project_id)
     if project is None: return
@@ -73,28 +107,35 @@ async def run_generation_async(project_id: int):
     await _send(project_id, {"status": "running", "progress": 5})
 
     try:
-        system_prompt = """
-You are "MagicTale," a world-renowned children's storyteller. Your voice is gentle, warm, and full of wonder. You must always be positive, encouraging, and kind in your narration.
-Your rules are: - Use simple, age-appropriate language. - Keep sentences clear and short. - Weave in themes of friendship, courage, and kindness. - Avoid scary or negative themes. - Write the story as a single, continuous narrative.
-"""
-        story_subject = project.custom_prompt.strip() or f"A story about: {project.theme}"
-        user_prompt = f"""
-Please write a complete {project.length} story using these details:
-- Language: {project.language}, Child's Name: {project.child_name}, Pronouns: {project.pronouns}, Age: {project.age}
-- Story Details: {story_subject}, Favorite Animal: {project.favorite_animal}, Favorite Color: {project.favorite_color}
-- Reading Difficulty Target: {project.difficulty}/5
-"""
-        await _send(project_id, {"message": "Whispering to the story spirits...", "progress": 15})
-        token_limit = LENGTH_TO_TOKENS.get(project.length, 1000)
+        system_prompt = _("You are \"MagicTale,\" a world-renowned children's storyteller. Your voice is gentle, warm, and full of wonder. You must always be positive, encouraging, and kind in your narration. Your rules are: - Use simple, age-appropriate language. - Keep sentences clear and short. - Weave in themes of friendship, courage, and kindness. - Avoid scary or negative themes. - Write the story as a single, continuous narrative.")
+        story_subject = project.custom_prompt.strip() or _("A story about: {theme}").format(theme=project.theme)
+        user_prompt = _("Please write a complete {length} story using these details:\n- Language: {language}\n- Child's Name: {child_name}\n- Child's Pronouns: {pronouns}\n- Child's Age: {age}\n- Story Details: {story_subject}\n- Favorite Animal to include: {favorite_animal}\n- Favorite Color to include: {favorite_color}\n- Reading Difficulty Target: {difficulty}/5").format(
+            length=project.length, language=project.language, child_name=project.child_name,
+            pronouns=project.pronouns, age=project.age, story_subject=story_subject,
+            favorite_animal=project.favorite_animal, favorite_color=project.favorite_color,
+            difficulty=project.difficulty
+        )
+        await _send(project_id, {"message": _("Whispering to the story spirits..."), "progress": 15})
+        token_limit = LENGTH_TO_TOKENS.get(project.length, 2000)
+        
         text_resp = await asyncio.to_thread(
             client.chat.completions.create, model=project.model_used or settings.AI_TEXT_MODEL,
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+            messages=[{"role": "system", "content": str(system_prompt)}, {"role": "user", "content": str(user_prompt)}],
             temperature=0.8, timeout=90.0, max_tokens=token_limit
         )
         full_text = text_resp.choices[0].message.content.strip() if text_resp.choices else ""
         await _save_project_fields(project, {"text": full_text})
         await _update_progress(project, progress=30)
-        await _send(project_id, {"message": "Summarizing the adventure...", "progress": 40})
+
+        page_texts = _split_text_into_pages(full_text)
+        page_objects = []
+        await sync_to_async(project.pages.all().delete)()
+        for i, page_text in enumerate(page_texts, start=1):
+            page = await sync_to_async(StoryPage.objects.create)(project=project, index=i, text=page_text)
+            page_objects.append(page)
+        await _save_event(project, "pages_created", {"count": len(page_objects)})
+        
+        await _send(project_id, {"message": _("Summarizing the adventure..."), "progress": 40})
         synopsis_prompt = _build_synopsis_prompt(full_text)
         synopsis_resp = await asyncio.to_thread(
             client.chat.completions.create, model=settings.AI_TEXT_MODEL,
@@ -104,12 +145,13 @@ Please write a complete {project.length} story using these details:
         try:
             metadata = json.loads(synopsis_resp.choices[0].message.content)
             if not metadata.get("synopsis") or len(metadata.get("synopsis", "")) < 20:
-                metadata["synopsis"] = project.theme or "A wonderful and magical adventure."
+                metadata["synopsis"] = _("A wonderful and magical adventure.")
             await _save_project_fields(project, metadata)
         except (json.JSONDecodeError, IndexError):
-            metadata = {"synopsis": "A magical adventure awaits!"}
+            metadata = {"synopsis": _("A magical adventure awaits!")}
         await _update_progress(project, progress=50)
-        await _send(project_id, {"message": "Creating the cover art...", "progress": 60})
+
+        await _send(project_id, {"message": _("Creating the cover art..."), "progress": 60})
         image_prompt = _build_cover_image_prompt(metadata.get("synopsis", project.theme), project)
         image_resp = await asyncio.to_thread(
             client.images.generate, model=settings.AI_IMAGE_MODEL,
@@ -118,54 +160,39 @@ Please write a complete {project.length} story using these details:
         image_url = image_resp.data[0].url if image_resp.data else ""
         await _save_project_fields(project, {"image_url": image_url, "cover_image_url": image_url})
         await _update_progress(project, progress=80)
-        await _send(project_id, {"message": "Recording the narration...", "progress": 90})
-        audio_resp = await asyncio.to_thread(
-            client.audio.speech.create, model=settings.AI_AUDIO_MODEL,
-            voice=project.voice or "alloy", input=full_text, timeout=180.0
-        )
         
-        audio_url_to_save = None
-        duration_seconds = 0
-        try:
-            print("--- ATTEMPTING TO GET AUDIO CONTENT ---")
-            audio_content = audio_resp.content
-            print(f"--- SUCCESS: Got audio content, size: {len(audio_content)} bytes ---")
-            
-            file_path_name = f"audio/story_{project.id}.mp3"
-            
-            print(f"--- ATTEMPTING TO SAVE TO STORAGE at {file_path_name} ---")
-            saved_file_path = await sync_to_async(default_storage.save)(file_path_name, ContentFile(audio_content))
-            print(f"--- SUCCESS: File saved by storage system to path: {saved_file_path} ---")
-            
-            audio_url_to_save = await sync_to_async(default_storage.url)(saved_file_path)
-            print(f"--- SUCCESS: Generated final URL: {audio_url_to_save} ---")
+        await _send(project_id, {"message": _("Recording narration for each page..."), "progress": 85})
+        audio_tasks = [_generate_audio_for_page(page, project) for page in page_objects]
+        audio_chunks = await asyncio.gather(*audio_tasks)
 
-            try:
-                print("--- ATTEMPTING TO READ DURATION FROM IN-MEMORY CONTENT ---")
-                audio_file_like_object = io.BytesIO(audio_content)
-                audio_info = MP3(audio_file_like_object)
-                duration_seconds = int(audio_info.info.length)
-                print(f"--- SUCCESS: Calculated duration: {duration_seconds} seconds ---")
-            except Exception as e:
-                print(f"--- WARNING: Could not read audio duration. Error: {e} ---")
+        await _send(project_id, {"message": _("Combining narration..."), "progress": 95})
+        combined_audio = AudioSegment.empty()
+        for chunk_io in audio_chunks:
+            if chunk_io:
+                chunk_io.seek(0)
+                combined_audio += AudioSegment.from_mp3(chunk_io)
+
+        final_audio_io = io.BytesIO()
+        combined_audio.export(final_audio_io, format="mp3")
+        final_audio_io.seek(0)
         
-        except Exception as e:
-            print(f"--- FATAL ERROR: FAILED DURING AUDIO SAVING/PROCESSING. Error: {e} ---")
-            error_message = f"Audio processing failed: {e}"
-            await _update_progress(project, status="failed", error=error_message)
-            return 
+        final_file_path = f"audio/story_{project.id}_full.mp3"
+        saved_final_path = await sync_to_async(default_storage.save)(final_file_path, ContentFile(final_audio_io.read()))
+        final_audio_url = await sync_to_async(default_storage.url)(saved_final_path)
+
+        duration_seconds = int(combined_audio.duration_seconds)
         
         await _save_project_fields(project, {
-            "audio_url": audio_url_to_save,
+            "audio_url": final_audio_url,
             "audio_duration_seconds": duration_seconds
         })
 
         await _update_progress(project, status="done", progress=100, finished=True)
         await _save_event(project, "done", {})
-        await _send(project_id, {"status": "done", "progress": 100, "message": "Your story is complete!"})
+        await _send(project_id, {"status": "done", "progress": 100, "message": _("Your story is complete!")})
 
     except Exception as e:
         error_message = str(e)
         await _update_progress(project, status="failed", error=error_message)
         await _save_event(project, "error", {"error": error_message})
-        await _send(project_id, {"status": "failed", "error": "Something went wrong during generation."})
+        await _send(project_id, {"status": "failed", "error": _("Something went wrong during generation.")})

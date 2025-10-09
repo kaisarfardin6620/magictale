@@ -15,6 +15,7 @@ from .serializers import (
 )
 from .tasks import run_generation_task
 from authentication.permissions import HasActiveSubscription, IsOwner, IsStoryMaster
+from django.utils.translation import gettext_lazy as _
 
 class StoryProjectViewSet(viewsets.ModelViewSet):
     queryset = StoryProject.objects.all()
@@ -59,7 +60,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
     def latest(self, request):
         latest_story = StoryProject.objects.filter(user=request.user).order_by('-created_at').first()
         if not latest_story:
-            return Response({"detail": "No stories found for this user."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": _("No stories found for this user.")}, status=status.HTTP_404_NOT_FOUND)
         
         serializer = self.get_serializer(latest_story)
         return Response(serializer.data)
@@ -75,16 +76,16 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
                 f"story_{project.id}",
                 {"type": "progress", "event": {"progress": project.progress, "status": "canceled"}}
             )
-        return Response({"message": "Cancellation request processed."}, status=status.HTTP_200_OK)
+        return Response({"message": _("Cancellation request processed.")}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='save-to-library')
     def save_to_library(self, request, pk=None):
         project = self.get_object()
         if project.status != StoryProject.Status.DONE:
-            return Response({"detail": "This story cannot be saved as it is not complete."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": _("This story cannot be saved as it is not complete.")}, status=status.HTTP_400_BAD_REQUEST)
         project.is_saved = True
         project.save(update_fields=['is_saved'])
-        return Response({"message": "Story successfully saved to your library."}, status=status.HTTP_200_OK)
+        return Response({"message": _("Story successfully saved to your library.")}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='download-pdf')
     def download_pdf(self, request, pk=None):
@@ -94,7 +95,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         
         project = self.get_object()
         if project.status != StoryProject.Status.DONE:
-            return Response({"detail": "Cannot generate PDF. Story is not yet complete."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": _("Cannot generate PDF. Story is not yet complete.")}, status=status.HTTP_400_BAD_REQUEST)
         
         context = {"project": project}
         html_string = render_to_string("ai/story_pdf_template.html", context)

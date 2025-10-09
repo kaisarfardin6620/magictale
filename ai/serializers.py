@@ -1,7 +1,12 @@
 from rest_framework import serializers
-from .models import StoryProject
+from .models import StoryProject, StoryPage
 from authentication.models import OnboardingStatus
 from django.conf import settings
+
+class StoryPageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StoryPage
+        fields = ["index", "text", "audio_url"]
 
 class HeroSerializer(serializers.ModelSerializer):
     class Meta:
@@ -33,6 +38,7 @@ class StoryProjectCreateSerializer(serializers.ModelSerializer):
         return story_project
 
 class StoryProjectDetailSerializer(serializers.ModelSerializer):
+    page_count = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
     audio_url = serializers.SerializerMethodField()
     class Meta:
@@ -42,8 +48,11 @@ class StoryProjectDetailSerializer(serializers.ModelSerializer):
             "id", "user", "onboarding", "is_saved", "child_name", "age", "pronouns", "favorite_animal", 
             "favorite_color", "theme", "custom_prompt", "art_style", "language", "voice", "length", 
             "difficulty", "model_used", "synopsis", "tags", "status", "progress", "error", "read_count", 
-            "likes_count", "shares_count", "created_at", "started_at", "finished_at", "text", "image_url", "audio_url"
+            "likes_count", "shares_count", "created_at", "started_at", "finished_at", "text", "image_url", "audio_url",
+            "page_count" 
         ]
+    def get_page_count(self, obj):
+        return obj.pages.count()
         
     def get_image_url(self, obj):
         return obj.image_url if obj.image_url else None
@@ -51,6 +60,6 @@ class StoryProjectDetailSerializer(serializers.ModelSerializer):
     def get_audio_url(self, obj):
         if obj.audio_url:
             if settings.USE_S3_STORAGE:
-                return obj.audio.url
+                return obj.audio_url
             return f"{settings.BACKEND_BASE_URL}{obj.audio_url}"
         return None

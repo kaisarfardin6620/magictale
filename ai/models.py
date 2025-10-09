@@ -51,6 +51,19 @@ class StoryProject(models.Model):
     def __str__(self):
         return f"Story for '{self.child_name}' ({self.user.username}) - {self.status}"
 
+class StoryPage(models.Model):
+    project = models.ForeignKey(StoryProject, on_delete=models.CASCADE, related_name="pages")
+    index = models.PositiveIntegerField()
+    text = models.TextField()
+    audio_url = models.URLField(max_length=1024, blank=True, default="")
+    
+    class Meta:
+        unique_together = ("project", "index")
+        ordering = ["index"]
+
+    def __str__(self):
+        return f"Page {self.index} for project {self.project.id}"
+
 class GenerationEvent(models.Model):
     project = models.ForeignKey(StoryProject, on_delete=models.CASCADE, related_name="events")
     ts = models.DateTimeField(auto_now_add=True)
