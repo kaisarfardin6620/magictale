@@ -80,7 +80,7 @@ class DashboardUserSerializer(serializers.ModelSerializer):
 
 class DashboardStorySerializer(serializers.ModelSerializer):
     title = serializers.CharField(source='theme')
-    creator = serializers.CharField(source='user.get_full_name', read_only=True)
+    creator = serializers.CharField(source='user.username', read_only=True)
     date = serializers.DateTimeField(source='created_at', format='%b %d, %Y')
     status = serializers.SerializerMethodField()
     class Meta:
