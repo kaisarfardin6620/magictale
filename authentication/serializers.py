@@ -68,14 +68,16 @@ class MyTokenObtainPairSerializer(serializers.Serializer):
         fcm_token = attrs.get('fcm_token')
 
         if not email or not password:
-            raise serializers.ValidationError('Must include "email" and "password".')
+            raise serializers.ValidationError({'message': 'Must include "email" and "password".'})
+
         try:
             user_obj = User.objects.get(email__iexact=email)
         except User.DoesNotExist:
-            raise serializers.ValidationError('No active account found with the given credentials')
+            raise serializers.ValidationError({'message': 'No active account found with the given credentials'})
+
         user = authenticate(request=self.context.get('request'), username=user_obj.username, password=password)
         if not user:
-            raise serializers.ValidationError('No active account found with the given credentials')
+            raise serializers.ValidationError({'message': 'No active account found with the given credentials'})
 
         if fcm_token:
             user_agent = self.context['request'].META.get('HTTP_USER_AGENT', '').lower()
@@ -99,6 +101,7 @@ class MyTokenObtainPairSerializer(serializers.Serializer):
         access_token = refresh.access_token
         access_token['is_staff'] = user.is_staff
         access_token['username'] = user.username
+
         try:
             subscription = user.subscription
             access_token['plan'] = subscription.plan
@@ -106,9 +109,15 @@ class MyTokenObtainPairSerializer(serializers.Serializer):
         except (AttributeError, User.subscription.RelatedObjectDoesNotExist):
             access_token['plan'] = None
             access_token['subscription_status'] = 'inactive'
-        data = {'refresh': str(refresh), 'access': str(access_token), 'fcm_token': str(fcm_token)}
-        return data
 
+        return {
+            'success': True,
+            'data': {
+                'refresh': str(refresh),
+                'access': str(access_token),
+                'fcm_token': str(fcm_token)
+            }
+        }
 class ProfileSerializer(serializers.ModelSerializer):
     subscription_active = serializers.SerializerMethodField()
     current_plan = serializers.SerializerMethodField()
