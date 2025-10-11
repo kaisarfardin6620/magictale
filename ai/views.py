@@ -16,6 +16,10 @@ from .serializers import (
 from .tasks import run_generation_task
 from authentication.permissions import HasActiveSubscription, IsOwner, IsStoryMaster
 from django.utils.translation import gettext_lazy as _
+from rest_framework.views import APIView
+from django.conf import settings
+from django.contrib.staticfiles.storage import staticfiles_storage
+
 
 class StoryProjectViewSet(viewsets.ModelViewSet):
     queryset = StoryProject.objects.all()
@@ -54,7 +58,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        return Response(serializer.data, status=status.HTTP_202_ACCEPTED, headers=headers)
 
     @action(detail=False, methods=['get'])
     def latest(self, request):
@@ -104,3 +108,44 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         response = HttpResponse(pdf_file, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{project.child_name}_story.pdf"'
         return response
+class GenerationOptionsView(APIView):
+    """
+    Provides the frontend with dynamic lists of available options.
+    Art styles will be returned as objects containing their name and image URL.
+    Themes and voices will be returned as simple lists of strings.
+    """
+    permission_classes = [permissions.IsAuthenticated, HasActiveSubscription]
+
+    def get(self, request):
+        user = request.user
+        try:
+            subscription = user.subscription
+        except (AttributeError, user.subscription.RelatedObjectDoesNotExist):
+            return Response({"detail": "Subscription status not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        themes = settings.ALL_THEMES
+
+        if subscription.plan == 'master' and subscription.status == 'active':
+            allowed_style_names = settings.ALL_ART_STYLES
+        else:
+            allowed_style_names = settings.TIER_1_ART_STYLES
+
+        art_styles = [
+            {
+                "name": name,
+                "image_url": request.build_absolute_uri(
+                    staticfiles_storage.url(f"images/art_styles/{settings.ALL_ART_STYLES_DATA[name]}")
+                )
+            } for name in allowed_style_names
+        ]
+
+        if subscription.plan == 'master' and subscription.status == 'active':
+            voices = settings.ALL_NARRATOR_VOICES
+        else:
+            voices = settings.TIER_1_NARRATOR_VOICES
+
+        return Response({
+            "themes": themes,
+            "art_styles": art_styles,
+            "narrator_voices": voices,
+        }, status=status.HTTP_200_OK)

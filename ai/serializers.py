@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import StoryProject, StoryPage
 from authentication.models import OnboardingStatus
-from django.conf import settings
+from django.conf import settings 
 
 class StoryPageSerializer(serializers.ModelSerializer):
     class Meta:
@@ -22,6 +22,45 @@ class StoryProjectCreateSerializer(serializers.ModelSerializer):
             "voice", "length", "difficulty", "model_used"
         ]
         read_only_fields = ["id"]
+    def validate(self, data):
+        """
+        Validates the chosen art style and voice against the user's subscription plan.
+        This is the security check that prevents a user from submitting a value for a
+        premium feature they don't have access to.
+        """
+        user = self.context["request"].user
+        try:
+            subscription = user.subscription
+        except (AttributeError, user.subscription.RelatedObjectDoesNotExist):
+            raise serializers.ValidationError("Cannot determine subscription status for validation.")
+
+        allowed_styles = settings.TIER_1_ART_STYLES
+        allowed_voices = settings.TIER_1_NARRATOR_VOICES
+
+        if subscription.plan == 'master' and subscription.status == 'active':
+            allowed_styles = settings.ALL_ART_STYLES
+            allowed_voices = settings.ALL_NARRATOR_VOICES
+
+        submitted_style = data.get('art_style')
+        if submitted_style and submitted_style not in allowed_styles:
+            raise serializers.ValidationError({
+                'art_style': f"The '{submitted_style}' art style is not available for your current plan."
+            })
+            
+        submitted_voice = data.get('voice')
+        if submitted_voice and submitted_voice not in allowed_voices:
+            raise serializers.ValidationError({
+                'voice': f"The selected narrator voice is not available for your current plan."
+            })
+            
+        submitted_theme = data.get('theme')
+        if submitted_theme and submitted_theme not in settings.ALL_THEMES:
+             raise serializers.ValidationError({
+                'theme': f"The theme '{submitted_theme}' is not a valid option."
+            })
+
+        return data
+
     def create(self, validated_data):
         user = self.context["request"].user
         hero_data = validated_data.pop('hero')

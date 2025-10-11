@@ -1,5 +1,3 @@
-# dashboard/views.py
-
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
@@ -16,7 +14,7 @@ from .serializers import (
     DashboardUserSerializer,
     DashboardStorySerializer,
     AdminProfileSerializer,
-    AdminProfileUpdateSerializer,
+    AdminProfileUpdateSerializer, 
     AdminChangePasswordSerializer
 )
 
@@ -32,12 +30,21 @@ from rest_framework.decorators import action
 from authentication.utils import send_email
 from django.template.loader import render_to_string
 from authentication.models import UserProfile
+from django.core.cache import cache
+from rest_framework.exceptions import ValidationError
+from . import services 
 
 
 class DashboardStatsAPIView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
+        cache_key = 'dashboard_stats_and_recents'
+        cached_data = cache.get(cache_key)
+
+        if cached_data:
+            return Response(cached_data)
+
         now = timezone.now()
         last_month_start = now - timedelta(days=30)
         total_users = User.objects.count()
@@ -76,7 +83,7 @@ class DashboardStatsAPIView(APIView):
                 params = request.query_params.copy()
                 params[page_param_name] = paginated_qs.previous_page_number()
                 return f"{scheme}://{host}{path}?{params.urlencode()}"
-            return None
+            return None  
         data = {
             'stats': {
                 'total_users': {'value': total_users, 'change': self._calculate_change(total_users - users_this_month, users_this_month)},
@@ -87,6 +94,9 @@ class DashboardStatsAPIView(APIView):
             'recent_signups': {'count': user_paginator.count, 'num_pages': user_paginator.num_pages, 'current_page': paginated_users.number, 'next': get_next_url(paginated_users, 'user_page'), 'previous': get_previous_url(paginated_users, 'user_page'), 'results': user_serializer.data},
             'recent_stories': {'count': story_paginator.count, 'num_pages': story_paginator.num_pages, 'current_page': paginated_stories.number, 'next': get_next_url(paginated_stories, 'story_page'), 'previous': get_previous_url(paginated_stories, 'story_page'), 'results': story_serializer.data}
         }
+        
+        cache.set(cache_key, data, timeout=900)
+        
         return Response(data)
     def _calculate_change(self, old, new):
         if old <= 0: return 100.0 if new > 0 else 0.0
@@ -171,29 +181,15 @@ class AdminProfileView(APIView):
     def put(self, request):
         user = request.user
         
-        # --- THIS IS THE NEW, COMBINED LOGIC ---
-        
-        # Part 1: Handle password change if password fields are present
-        if 'new_password' in request.data and 'current_password' in request.data:
-            password_serializer = AdminChangePasswordSerializer(data=request.data, context={'request': request})
-            if password_serializer.is_valid():
-                user.set_password(password_serializer.validated_data['new_password'])
-                # We will save the user at the end.
-            else:
-                return Response(password_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            if 'new_password' in request.data and 'current_password' in request.data:
+                services.change_admin_password(user, data=request.data, context={'request': request})
 
-        # Part 2: Handle profile data update
-        profile_serializer = AdminProfileUpdateSerializer(instance=user, data=request.data, context={'request': request}, partial=True)
-        if profile_serializer.is_valid():
-            profile_serializer.save() # This now correctly saves both User and UserProfile
-        else:
-            return Response(profile_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        # If a password was changed, log the user out of all other sessions
-        if 'new_password' in request.data:
-            OutstandingToken.objects.filter(user=user).delete()
+            services.update_admin_profile(user, data=request.data, context={'request': request})
+            
+        except ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
 
-        # Return the final, updated profile data
         final_serializer = AdminProfileSerializer(user)
         return Response(final_serializer.data, status=status.HTTP_200_OK)
 

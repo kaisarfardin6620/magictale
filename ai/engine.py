@@ -7,7 +7,7 @@ from django.utils import timezone
 from asgiref.sync import sync_to_async
 from channels.layers import get_channel_layer
 from django.conf import settings
-from openai import OpenAI
+from openai import OpenAI, RateLimitError, APIError
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from pydub import AudioSegment
@@ -23,6 +23,7 @@ LENGTH_TO_TOKENS = {
     "short": 4000, "medium": 7000, "long": 10000, 
 }
 DEFAULT_TEXT_MODEL = getattr(settings, "AI_TEXT_MODEL", "gpt-4-turbo")
+
 async def api_with_retry(func, *args, max_retries=3, **kwargs):
     """Wraps synchronous API calls with exponential backoff and retries."""
     for attempt in range(max_retries):
@@ -189,10 +190,10 @@ async def run_generation_async(project_id: int):
     project = await _reload_project(project_id)
     if project is None: return
 
-    await _save_event(project, "start", {"status": project.status})
-    await _send(project_id, {"status": "running", "progress": 5})
-
     try:
+        await _save_event(project, "start", {"status": project.status})
+        await _send(project_id, {"status": "running", "progress": 5})
+
         system_prompt = _("""
 You are "MagicTale," a master children's storyteller. Your goal is to write a unique, captivating story for a young child.
 Your voice must be gentle, enchanting, and full of wonder. You must be relentlessly positive, encouraging, and kind.
@@ -310,16 +311,38 @@ Since this is a '{length}' story, you must include a rich level of detail. The a
             audio_duration_seconds=duration_seconds
         )
 
-        await _cleanup_audio_chunks(project.id)
-
         await _update_project_state(project, status="done", progress=100, finished=True)
         await _save_event(project, "done", {})
         await _send(project_id, {"status": "done", "progress": 100, "message": _("Your story is complete!")})
 
-    except Exception as e:
-        error_message = str(e)
-        logger.error(f"Story generation failed for Project {project_id}: {error_message}", exc_info=True)
+
+    except RateLimitError as e:
+        error_message = _("The AI story-making service is very busy right now. Please try again in a few moments.")
+        logger.warning(f"Rate limit hit for Project {project_id}: {e}", exc_info=True)
         await _update_project_state(project, status="failed", error=error_message)
-        await _save_event(project, "error", {"error": error_message})
-        await _send(project_id, {"status": "failed", "error": _("Something went wrong during generation.")})
-        await _cleanup_audio_chunks(project_id)
+        await _save_event(project, "error", {"error": str(e), "type": "RateLimitError"})
+        await _send(project_id, {"status": "failed", "error": error_message})
+
+    except APIError as e:
+        error_message = _("There was a problem talking to the AI. This is likely a temporary issue, please try again.")
+        logger.error(f"OpenAI API Error for Project {project_id}: {e}", exc_info=True)
+        await _update_project_state(project, status="failed", error=error_message)
+        await _save_event(project, "error", {"error": str(e), "type": "APIError"})
+        await _send(project_id, {"status": "failed", "error": error_message})
+
+    except (ValueError, RuntimeError) as e:
+        error_message = _(f"An internal error occurred while building the story: {e}")
+        logger.error(f"Data or runtime error during generation for Project {project_id}: {e}", exc_info=True)
+        await _update_project_state(project, status="failed", error=error_message)
+        await _save_event(project, "error", {"error": str(e), "type": "InternalGenerationError"})
+        await _send(project_id, {"status": "failed", "error": error_message})
+
+    except Exception as e:
+        error_message = _("An unexpected error occurred while creating your story. Our team has been notified.")
+        logger.error(f"UNHANDLED exception during generation for Project {project_id}: {e}", exc_info=True)
+        await _update_project_state(project, status="failed", error=error_message)
+        await _save_event(project, "error", {"error": str(e), "type": "GenericException"})
+        await _send(project_id, {"status": "failed", "error": error_message})
+    
+    finally:
+        await _cleanup_audio_chunks(project.id)

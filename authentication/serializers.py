@@ -13,6 +13,7 @@ from .models import UserProfile, AuthToken, PasswordHistory, UserActivityLog, On
 from .utils import send_email
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
+from fcm_django.models import FCMDevice
 
 class PasswordValidator:
     @staticmethod
@@ -60,9 +61,13 @@ class SignupSerializer(serializers.ModelSerializer):
 class MyTokenObtainPairSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+    
+    fcm_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
+
     def validate(self, attrs):
         email = attrs.get('email')
         password = attrs.get('password')
+        fcm_token = attrs.get('fcm_token') 
         if not email or not password:
             raise serializers.ValidationError('Must include "email" and "password".')
         try:
@@ -72,6 +77,25 @@ class MyTokenObtainPairSerializer(serializers.Serializer):
         user = authenticate(request=self.context.get('request'), username=user_obj.username, password=password)
         if not user:
             raise serializers.ValidationError('No active account found with the given credentials')
+
+        if fcm_token:
+            user_agent = self.context['request'].META.get('HTTP_USER_AGENT', '').lower()
+            if 'android' in user_agent:
+                device_type = 'android'
+            elif 'iphone' in user_agent or 'ipad' in user_agent:
+                device_type = 'ios'
+            else:
+                device_type = 'web'
+
+            FCMDevice.objects.update_or_create(
+                registration_id=fcm_token,
+                defaults={
+                    'user': user,
+                    'active': True,
+                    'type': device_type
+                }
+            )
+
         refresh = RefreshToken.for_user(user)
         access_token = refresh.access_token
         access_token['is_staff'] = user.is_staff
