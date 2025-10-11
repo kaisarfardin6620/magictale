@@ -116,7 +116,9 @@ class MyTokenObtainPairSerializer(serializers.Serializer):
                 'refresh': str(refresh),
                 'access': str(access_token),
                 'fcm_token': str(fcm_token)
-            }
+            },
+            'refresh': str(refresh),
+            'access': str(access_token)
         }
 class ProfileSerializer(serializers.ModelSerializer):
     subscription_active = serializers.SerializerMethodField()
