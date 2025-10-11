@@ -106,7 +106,7 @@ class MyTokenObtainPairSerializer(serializers.Serializer):
         except (AttributeError, User.subscription.RelatedObjectDoesNotExist):
             access_token['plan'] = None
             access_token['subscription_status'] = 'inactive'
-        data = {'refresh': str(refresh), 'access': str(access_token)}
+        data = {'refresh': str(refresh), 'access': str(access_token), 'fcm_token': str(fcm_token)}
         return data
 
 class ProfileSerializer(serializers.ModelSerializer):
