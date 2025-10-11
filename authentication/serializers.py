@@ -61,13 +61,12 @@ class SignupSerializer(serializers.ModelSerializer):
 class MyTokenObtainPairSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
-    
-    fcm_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
-
+    fcm_token = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True, default=None)
     def validate(self, attrs):
         email = attrs.get('email')
         password = attrs.get('password')
-        fcm_token = attrs.get('fcm_token') 
+        fcm_token = attrs.get('fcm_token')
+
         if not email or not password:
             raise serializers.ValidationError('Must include "email" and "password".')
         try:
@@ -107,7 +106,7 @@ class MyTokenObtainPairSerializer(serializers.Serializer):
         except (AttributeError, User.subscription.RelatedObjectDoesNotExist):
             access_token['plan'] = None
             access_token['subscription_status'] = 'inactive'
-        data = {'refresh': str(refresh), 'access': str(access_token), 'fcm_token': fcm_token}
+        data = {'refresh': str(refresh), 'access': str(access_token)}
         return data
 
 class ProfileSerializer(serializers.ModelSerializer):
