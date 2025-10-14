@@ -1,39 +1,46 @@
-from django.http import HttpResponse
-from django.template.loader import render_to_string
 from django.db import transaction
 from django.utils import timezone
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from weasyprint import HTML
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, NotFound, ValidationError
+from rest_framework.views import APIView
+from django.conf import settings
+from django.contrib.staticfiles.storage import staticfiles_storage
+from django.utils.translation import gettext_lazy as _
+from rest_framework.throttling import ScopedRateThrottle
+from django.core.cache import cache
+from .tasks import start_story_generation_pipeline, generate_pdf_task
 from .models import StoryProject
 from .serializers import (
     StoryProjectCreateSerializer,
     StoryProjectDetailSerializer,
 )
-from .tasks import run_generation_task
 from authentication.permissions import HasActiveSubscription, IsOwner, IsStoryMaster
-from django.utils.translation import gettext_lazy as _
-from rest_framework.views import APIView
-from django.conf import settings
-from django.contrib.staticfiles.storage import staticfiles_storage
-
 
 class StoryProjectViewSet(viewsets.ModelViewSet):
-    queryset = StoryProject.objects.all()
+    queryset = StoryProject.objects.all() 
     serializer_class = StoryProjectDetailSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwner, HasActiveSubscription]
+    throttle_classes = [ScopedRateThrottle]
 
     def get_queryset(self):
-        queryset = self.queryset.filter(user=self.request.user).order_by("-created_at")
-
+        queryset = (
+            super().get_queryset()
+            .filter(user=self.request.user)
+            .select_related('user') 
+            .order_by("-created_at")
+        )
         if self.action == 'list':
             return queryset.filter(is_saved=True)
-        
         return queryset
+
+    def get_throttles(self):
+        if self.action == 'create':
+            self.throttle_scope = 'story_creation'
+        return super().get_throttles()
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -41,13 +48,13 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         return super().get_serializer_class()
 
     def perform_create(self, serializer):
-        project = serializer.save() 
+        project = serializer.save()
         project.status = StoryProject.Status.RUNNING
         project.started_at = timezone.now()
         project.progress = 1
         project.error = ""
         project.save(update_fields=["status", "started_at", "progress", "error"])
-        transaction.on_commit(lambda: run_generation_task.delay(project.id))
+        transaction.on_commit(lambda: start_story_generation_pipeline(project.id))
 
     def create(self, request, *args, **kwargs):
         story_master_permission = IsStoryMaster()
@@ -63,7 +70,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def latest(self, request):
-        latest_story = StoryProject.objects.filter(user=request.user).order_by('-created_at').first()
+        latest_story = StoryProject.objects.filter(user=request.user).select_related('user').order_by('-created_at').first()
         if not latest_story:
             raise NotFound(_("No stories found for this user."))
         
@@ -94,7 +101,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(project)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['get'], url_path='download-pdf')
+    @action(detail=True, methods=['post'], url_path='download-pdf')
     def download_pdf(self, request, pk=None):
         story_master_permission = IsStoryMaster()
         if not story_master_permission.has_permission(request, self):
@@ -104,35 +111,41 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         if project.status != StoryProject.Status.DONE:
             raise ValidationError(_("Cannot generate PDF. Story is not yet complete."))
         
-        context = {"project": project}
-        html_string = render_to_string("ai/story_pdf_template.html", context)
-        pdf_file = HTML(string=html_string).write_pdf()
+        generate_pdf_task.delay(project.id)
         
-        response = HttpResponse(pdf_file, content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="{project.child_name}_story.pdf"'
-        return response
+        return Response(
+            {"message": _("Your PDF is being generated. You will be notified when it is ready.")},
+            status=status.HTTP_202_ACCEPTED
+        )
+
 class GenerationOptionsView(APIView):
-    """
-    Provides the frontend with dynamic lists of available options.
-    Art styles will be returned as objects containing their name and image URL.
-    Themes and voices will be returned as simple lists of strings.
-    """
     permission_classes = [permissions.IsAuthenticated, HasActiveSubscription]
 
     def get(self, request):
         user = request.user
+        
+        try:
+            plan_key = f"{user.subscription.plan}_{user.subscription.status}"
+        except (AttributeError, user.subscription.RelatedObjectDoesNotExist):
+            plan_key = "default"
+        
+        cache_key = f"generation_options_{plan_key}"
+        cached_data = cache.get(cache_key)
+
+        if cached_data:
+            return Response(cached_data, status=status.HTTP_200_OK)
+
         try:
             subscription = user.subscription
         except (AttributeError, user.subscription.RelatedObjectDoesNotExist):
-            raise NotFound("Subscription status not found.")
+            subscription = type('obj', (object,), {'plan': 'creator', 'status': 'trialing'})()
 
         themes = settings.ALL_THEMES
 
-        if subscription.plan == 'master' and subscription.status == 'active':
-            allowed_style_names = settings.ALL_ART_STYLES
-        else:
-            allowed_style_names = settings.TIER_1_ART_STYLES
+        is_master_plan = subscription.plan == 'master' and subscription.status == 'active'
 
+        allowed_style_names = settings.ALL_ART_STYLES if is_master_plan else settings.TIER_1_ART_STYLES
+        
         art_styles = [
             {
                 "name": name,
@@ -142,13 +155,14 @@ class GenerationOptionsView(APIView):
             } for name in allowed_style_names
         ]
 
-        if subscription.plan == 'master' and subscription.status == 'active':
-            voices = settings.ALL_NARRATOR_VOICES
-        else:
-            voices = settings.TIER_1_NARRATOR_VOICES
+        voices = settings.ALL_NARRATOR_VOICES if is_master_plan else settings.TIER_1_NARRATOR_VOICES
 
-        return Response({
+        response_data = {
             "themes": themes,
             "art_styles": art_styles,
             "narrator_voices": voices,
-        }, status=status.HTTP_200_OK)
+        }
+
+        cache.set(cache_key, response_data, timeout=3600)
+
+        return Response(response_data, status=status.HTTP_200_OK)

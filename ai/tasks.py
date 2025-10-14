@@ -1,41 +1,116 @@
-# ai/tasks.py
-
 import openai
-from celery import shared_task
+from celery import shared_task, chain
 from asgiref.sync import async_to_sync
-from .engine import run_generation_async
-
-# Define which specific, temporary exceptions from the OpenAI library should trigger a retry.
-# We DON'T want to retry on permanent errors like invalid authentication or bad prompts.
-RETRYABLE_EXCEPTIONS = (
-    openai.APITimeoutError,      # The request took too long.
-    openai.APIConnectionError,   # There was a network issue.
-    openai.RateLimitError,       # We're sending requests too fast.
-    openai.InternalServerError,  # OpenAI's servers had a temporary problem.
+from django.utils.translation import gettext_lazy as _
+from weasyprint import HTML
+from django.template.loader import render_to_string
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
+from .models import StoryProject
+from .engine import (
+    _reload_project,
+    _update_project_state,
+    _save_event,
+    _send,
+    _cleanup_audio_chunks,
+    generate_text_logic,
+    generate_metadata_and_cover_logic,
+    generate_audio_logic,
+    handle_generation_failure
 )
+
+
+RETRYABLE_EXCEPTIONS = (
+    openai.APITimeoutError,
+    openai.APIConnectionError,
+    openai.RateLimitError,
+    openai.InternalServerError,
+)
+
+def on_pipeline_failure(self, exc, task_id, args, kwargs, einfo):
+    project_id = args[0]
+    print(f"PIPELINE FAILED: Task {self.name} for project {project_id} failed permanently. Reason: {exc}")
+    async_to_sync(handle_generation_failure)(project_id, exc)
+
+
 
 @shared_task(
-    bind=True, 
-    autoretry_for=RETRYABLE_EXCEPTIONS, 
-    retry_kwargs={'max_retries': 3, 'countdown': 60}
+    bind=True,
+    autoretry_for=RETRYABLE_EXCEPTIONS,
+    retry_kwargs={'max_retries': 3, 'countdown': 60},
+    on_failure=on_pipeline_failure
 )
-def run_generation_task(self, project_id: int):
-    """
-    Celery task with automatic retries for common OpenAI API issues.
-    
-    - autoretry_for: If one of the specified exceptions happens, Celery won't fail the task.
-                     Instead, it will automatically try again.
-    - retry_kwargs: 
-        - 'max_retries': 3 = It will try a total of 4 times (the initial attempt + 3 retries).
-        - 'countdown': 60 = It will wait 60 seconds before the next attempt.
-    """
-    print(f"Starting generation task for project {project_id}. Attempt: {self.request.retries + 1}")
+def generate_text_task(self, project_id: int):
+    """Celery Task - STAGE 1: Generates the story text and pages."""
+    print(f"Starting STAGE 1: TEXT for project {project_id}")
+    async_to_sync(generate_text_logic)(project_id)
+    print(f"Finished STAGE 1: TEXT for project {project_id}")
+    return project_id 
+
+@shared_task(
+    bind=True,
+    autoretry_for=RETRYABLE_EXCEPTIONS,
+    retry_kwargs={'max_retries': 3, 'countdown': 60},
+    on_failure=on_pipeline_failure
+)
+def generate_metadata_and_cover_task(self, project_id: int):
+    print(f"Starting STAGE 2: METADATA/COVER for project {project_id}")
+    async_to_sync(generate_metadata_and_cover_logic)(project_id)
+    print(f"Finished STAGE 2: METADATA/COVER for project {project_id}")
+    return project_id
+
+@shared_task(
+    bind=True,
+    autoretry_for=RETRYABLE_EXCEPTIONS,
+    retry_kwargs={'max_retries': 3, 'countdown': 120}, 
+    on_failure=on_pipeline_failure
+)
+def generate_audio_task(self, project_id: int):
+    print(f"Starting STAGE 3: AUDIO for project {project_id}")
+    async_to_sync(generate_audio_logic)(project_id)
+    print(f"Finished STAGE 3: AUDIO for project {project_id}")
+    async_to_sync(_cleanup_audio_chunks)(project_id)
+    print(f"Project {project_id} generation pipeline complete.")
+    return project_id
+
+def start_story_generation_pipeline(project_id: int):
+    pipeline = chain(
+        generate_text_task.s(project_id),
+        generate_metadata_and_cover_task.s(),
+        generate_audio_task.s()
+    )
+    print(f"Dispatching generation pipeline for project {project_id}")
+    pipeline.apply_async()
+
+
+
+@shared_task(bind=True)
+def generate_pdf_task(self, project_id: int):
+    print(f"Starting PDF generation for project {project_id}")
     try:
-        async_to_sync(run_generation_async)(project_id)
+        project = StoryProject.objects.get(id=project_id)
+        context = {"project": project}
+        html_string = render_to_string("ai/story_pdf_template.html", context)
+        pdf_file_bytes = HTML(string=html_string).write_pdf()
+
+        file_path = f'pdfs/story_{project.id}_{project.child_name}.pdf'
+        default_storage.save(file_path, ContentFile(pdf_file_bytes))
+        pdf_url = default_storage.url(file_path)
+
+        print(f"Successfully generated and saved PDF for project {project_id} at {pdf_url}")
+
+        notification_payload = {
+            "type": "progress", 
+            "event": {
+                "status": "pdf_ready",
+                "message": _("Your story PDF is ready for download!"),
+                "pdf_url": pdf_url
+            }
+        }
+        async_to_sync(_send)(project_id, notification_payload)
+
+    except StoryProject.DoesNotExist:
+        print(f"Error generating PDF: StoryProject with id={project_id} not found.")
     except Exception as e:
-        # This 'except' block will only be reached if:
-        # 1. An exception occurs that is NOT in RETRYABLE_EXCEPTIONS (e.g., a bug in your own code).
-        # 2. All 3 retries have been used up and the task still fails.
-        print(f"Task for project {project_id} failed permanently after retries: {e}")
-        # Re-raising the exception is important to mark the task as 'FAILURE' in your Celery monitor.
+        print(f"An unexpected error occurred during PDF generation for project {project_id}: {e}")
         raise
