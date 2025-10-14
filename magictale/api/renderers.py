@@ -16,13 +16,13 @@ class CustomJSONRenderer(JSONRenderer):
             message = data.pop('message')
             response_data = data if data else None
 
-        if status_code == 201:
+        elif status_code == 201:
             message = "Resource created successfully."
-        elif status_code == 204: 
-             response_data = None
-        
-        if isinstance(data, dict) and 'token' in data:
-             message = "Successfully Logged in."
+        elif status_code == 204:
+            response_data = None 
+        elif isinstance(data, dict) and 'token' in data:
+            message = "Successfully Logged in."
+    
 
         response_payload = {
             "success": True,
