@@ -14,6 +14,7 @@ from .utils import send_email
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from fcm_django.models import FCMDevice
+import time 
 
 class PasswordValidator:
     @staticmethod
@@ -101,7 +102,6 @@ class MyTokenObtainPairSerializer(serializers.Serializer):
         access_token = refresh.access_token
         access_token['is_staff'] = user.is_staff
         access_token['username'] = user.username
-
         try:
             subscription = user.subscription
             access_token['plan'] = subscription.plan
@@ -111,11 +111,13 @@ class MyTokenObtainPairSerializer(serializers.Serializer):
             access_token['subscription_status'] = 'inactive'
 
         return {
-            'success': True,
-            'data': {
-                'refresh': str(refresh),
-                'access': str(access_token),
-                'fcm_token': str(fcm_token)
+            "success": True,
+            "code": 200,
+            "message": "Successfully Logged in.",
+            "timestamp": int(time.time()),
+            "data": {
+                "token": str(access_token),
+                "refresh_token": str(refresh)
             }
         }
 class ProfileSerializer(serializers.ModelSerializer):
