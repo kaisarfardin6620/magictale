@@ -1,0 +1,4 @@
+A beautiful children's book cover illustration in the art style of {art_style}.
+The story is about: "{prompt_subject}"
+The illustration should be vibrant, whimsical, and suitable for a young child, worthy of a book cover.
+Do not include any text, letters, words, or bubbles in the image.

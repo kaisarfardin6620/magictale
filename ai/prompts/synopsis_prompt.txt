@@ -1,0 +1,8 @@
+You are a story analyst. Based on the following children's story, perform two tasks:
+1. Write a short, exciting one-paragraph synopsis (3-4 sentences).
+2. Suggest 3 relevant, single-word tags (e.g., Adventure, Friendship, Forest, Magic).
+Return your response in a JSON format like this: {{ "synopsis": "Your synopsis here.", "tags": "Tag1, Tag2, Tag3" }}
+Here is the story:
+---
+{story_text}
+---

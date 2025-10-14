@@ -123,25 +123,15 @@ def _generate_cover_image_sync(metadata: dict, project: StoryProject):
 
 
 def _build_synopsis_prompt(story_text: str) -> str:
-    return f"""
-You are a story analyst. Based on the following children's story, perform two tasks:
-1. Write a short, exciting one-paragraph synopsis (3-4 sentences).
-2. Suggest 3 relevant, single-word tags (e.g., Adventure, Friendship, Forest, Magic).
-Return your response in a JSON format like this: {{ "synopsis": "Your synopsis here.", "tags": "Tag1, Tag2, Tag3" }}
-Here is the story:
----
-{story_text}
----
-"""
+    prompt_dir = Path(__file__).parent / "prompts"
+    synopsis_prompt_template = (prompt_dir / "synopsis_prompt.txt").read_text()
+    return synopsis_prompt_template.format(story_text=story_text)
 
 def _build_cover_image_prompt(synopsis: str, project: StoryProject) -> str:
+    prompt_dir = Path(__file__).parent / "prompts"
+    cover_image_prompt_template = (prompt_dir / "cover_image_prompt.txt").read_text()
     prompt_subject = synopsis if synopsis and len(synopsis) > 20 else project.theme
-    return f"""
-A beautiful children's book cover illustration in the art style of {project.art_style}.
-The story is about: "{prompt_subject}"
-The illustration should be vibrant, whimsical, and suitable for a young child, worthy of a book cover.
-Do not include any text, letters, words, or bubbles in the image.
-"""
+    return cover_image_prompt_template.format(art_style=project.art_style, prompt_subject=prompt_subject)
 
 async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
     """Generates audio for a single page with retry logic."""
@@ -194,33 +184,15 @@ async def run_generation_async(project_id: int):
         await _save_event(project, "start", {"status": project.status})
         await _send(project_id, {"status": "running", "progress": 5})
 
-        system_prompt = _("""
-You are "MagicTale," a master children's storyteller. Your goal is to write a unique, captivating story for a young child.
-Your voice must be gentle, enchanting, and full of wonder. You must be relentlessly positive, encouraging, and kind.
-RULES FOR NARRATION:
-1. **Pacing & Flow:** Maintain a slow, consistent, and rhythmic pace suitable for reading aloud.
-2. **Vocabulary:** Use only simple, age-appropriate, and imaginative language. Avoid complex concepts or jargon.
-3. **Themes:** Weave in core, positive moral themes: **courage, kindness, and friendship**.
-4. **Safety:** Absolutely **avoid** scary situations, negativity, conflict that causes sadness, or anything that could be frightening. Every challenge must be solved with a gentle, clever solution.
-5. **Structure:** Write the story as a single, continuous narrative with a clear beginning, middle (2-3 main friendly events/challenges), and a happy ending. Conclude with a clear, simple one-sentence takeaway about the virtue demonstrated (e.g., 'And that's how Leo learned the power of kindness!').
-""")
+        prompt_dir = Path(__file__).parent / "prompts"
+        system_prompt_template = (prompt_dir / "system_prompt.txt").read_text()
+        user_prompt_template = (prompt_dir / "user_prompt.txt").read_text()
+
+        system_prompt = _(system_prompt_template)
         
         story_subject = project.custom_prompt.strip() or _("A story about: {theme}").format(theme=project.theme)
         
-        user_prompt = _("""
-Please write a complete {length} story using these details:
-- **Language:** {language}
-- **Hero's Name:** {child_name}
-- **Hero's Pronouns:** {pronouns}
-- **Hero's Age:** {age} (Keep the story simple enough for this age).
-- **Core Subject:** {story_subject}
-- **Key Companion/Item:** The hero's main companion or magical item must be a **{favorite_animal}** or **{favorite_animal}**-themed (e.g., a lion plush, a cat-shaped ship).
-- **Key Object's Color:** A special object in the story (e.g., a magical gem, a map, a flag) must be the color **{favorite_color}**.
-- **Reading Difficulty Target:** {difficulty}/5 (Simpler is better).
-
-**IMPORTANT LENGTH INSTRUCTION (FOR LONG STORIES):**
-Since this is a '{length}' story, you must include a rich level of detail. The adventure must have **at least five distinct, descriptive scenes** and **use extensive dialogue and detailed sensory descriptions** to fill the narrative space and make the journey feel grand. Do not conclude until the story is fully elaborated.
-""").format(
+        user_prompt = _(user_prompt_template).format(
             length=project.length, language=project.language, child_name=project.child_name,
             pronouns=project.pronouns, age=project.age, story_subject=story_subject,
             favorite_animal=project.favorite_animal, favorite_color=project.favorite_color,
@@ -274,31 +246,38 @@ Since this is a '{length}' story, you must include a rich level of detail. The a
         
         for chunk_io in audio_chunks:
             if chunk_io:
-                with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as temp_chunk:
-                    temp_chunk.write(chunk_io.getvalue())
-                    temp_chunk.flush()
+                temp_chunk_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as temp_chunk:
+                        temp_chunk.write(chunk_io.getvalue())
+                        temp_chunk_path = temp_chunk.name
                     
-                    try:
-                        chunk_audio = AudioSegment.from_file(temp_chunk.name, format="mp3")
+                    if temp_chunk_path:
+                        chunk_audio = AudioSegment.from_file(temp_chunk_path, format="mp3")
                         if combined_audio is None:
                             combined_audio = chunk_audio
                         else:
                             combined_audio += chunk_audio
-                    except Exception as e:
-                        logger.error(f"Failed to process chunk audio: {e}")
-                    
-                    os.unlink(temp_chunk.name)
+                except Exception as e:
+                    logger.error(f"Failed to process chunk audio: {e}")
+                finally:
+                    if temp_chunk_path and os.path.exists(temp_chunk_path):
+                        os.unlink(temp_chunk_path)
         
         if combined_audio is None:
             raise RuntimeError("Failed to generate any audio chunks.")
 
-        with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as temp_combined:
-            combined_audio.export(temp_combined.name, format="mp3")
-            
-            with open(temp_combined.name, 'rb') as f:
+        temp_combined_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as temp_combined:
+                combined_audio.export(temp_combined.name, format="mp3")
+                temp_combined_path = temp_combined.name
+
+            with open(temp_combined_path, 'rb') as f:
                 final_audio_content = f.read()
-        
-        os.unlink(temp_combined.name) 
+        finally:
+            if temp_combined_path and os.path.exists(temp_combined_path):
+                os.unlink(temp_combined_path)
         
         final_file_path = f"audio/story_{project.id}_full.mp3"
         saved_final_path = await sync_to_async(default_storage.save)(final_file_path, ContentFile(final_audio_content))

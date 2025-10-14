@@ -1,0 +1,12 @@
+Please write a complete {length} story using these details:
+- **Language:** {language}
+- **Hero's Name:** {child_name}
+- **Hero's Pronouns:** {pronouns}
+- **Hero's Age:** {age} (Keep the story simple enough for this age).
+- **Core Subject:** {story_subject}
+- **Key Companion/Item:** The hero's main companion or magical item must be a **{favorite_animal}** or **{favorite_animal}**-themed (e.g., a lion plush, a cat-shaped ship).
+- **Key Object's Color:** A special object in the story (e.g., a magical gem, a map, a flag) must be the color **{favorite_color}**.
+- **Reading Difficulty Target:** {difficulty}/5 (Simpler is better).
+
+**IMPORTANT LENGTH INSTRUCTION (FOR LONG STORIES):**
+Since this is a '{length}' story, you must include a rich level of detail. The adventure must have **at least five distinct, descriptive scenes** and **use extensive dialogue and detailed sensory descriptions** to fill the narrative space and make the journey feel grand. Do not conclude until the story is fully elaborated.

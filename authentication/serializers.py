@@ -15,6 +15,8 @@ from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from fcm_django.models import FCMDevice
 import time 
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework.exceptions import AuthenticationFailed
 
 class PasswordValidator:
     @staticmethod
@@ -59,67 +61,75 @@ class SignupSerializer(serializers.ModelSerializer):
         UserProfile.objects.create(user=user)
         return user
 
-class MyTokenObtainPairSerializer(serializers.Serializer):
-    email = serializers.EmailField()
-    password = serializers.CharField(write_only=True)
-    fcm_token = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True, default=None)
+class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
+    fcm_token = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['email'] = serializers.EmailField()
+        if 'username' in self.fields:
+            del self.fields['username']
+
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token['is_staff'] = user.is_staff
+        token['username'] = user.username
+        try:
+            subscription = user.subscription
+            token['plan'] = subscription.plan
+            token['subscription_status'] = subscription.status
+        except (AttributeError, User.subscription.RelatedObjectDoesNotExist):
+            token['plan'] = None
+            token['subscription_status'] = 'inactive'
+        return token
+
     def validate(self, attrs):
         email = attrs.get('email')
         password = attrs.get('password')
         fcm_token = attrs.get('fcm_token')
 
-        if not email or not password:
-            raise serializers.ValidationError({'message': 'Must include "email" and "password".'})
+        if not email:
+            raise serializers.ValidationError('Email address is required to log in.', code='authorization')
 
         try:
-            user_obj = User.objects.get(email__iexact=email)
+            user = User.objects.get(email__iexact=email)
         except User.DoesNotExist:
-            raise serializers.ValidationError({'message': 'No active account found with the given credentials'})
+            raise AuthenticationFailed("No account found with this email. Please check your email and try again.")
 
-        user = authenticate(request=self.context.get('request'), username=user_obj.username, password=password)
-        if not user:
-            raise serializers.ValidationError({'message': 'No active account found with the given credentials'})
+        if not user.check_password(password):
+            raise AuthenticationFailed("The password you entered is incorrect. Please try again.")
+
+        if not user.is_active:
+            raise AuthenticationFailed("This account is inactive. Please verify your email before logging in.")
+
+        self.user = user
 
         if fcm_token:
             user_agent = self.context['request'].META.get('HTTP_USER_AGENT', '').lower()
+            device_type = 'web' # Default
             if 'android' in user_agent:
                 device_type = 'android'
             elif 'iphone' in user_agent or 'ipad' in user_agent:
                 device_type = 'ios'
-            else:
-                device_type = 'web'
 
             FCMDevice.objects.update_or_create(
                 registration_id=fcm_token,
                 defaults={
-                    'user': user,
+                    'user': self.user,
                     'active': True,
                     'type': device_type
                 }
             )
-
-        refresh = RefreshToken.for_user(user)
-        access_token = refresh.access_token
-        access_token['is_staff'] = user.is_staff
-        access_token['username'] = user.username
-        try:
-            subscription = user.subscription
-            access_token['plan'] = subscription.plan
-            access_token['subscription_status'] = subscription.status
-        except (AttributeError, User.subscription.RelatedObjectDoesNotExist):
-            access_token['plan'] = None
-            access_token['subscription_status'] = 'inactive'
-
-        return {
-            "success": True,
-            "code": 200,
-            "message": "Successfully Logged in.",
-            "timestamp": int(time.time()),
-            "data": {
-                "token": str(access_token),
-                "refresh_token": str(refresh)
-            }
+        
+        refresh = self.get_token(self.user)
+        
+        data = {
+            'token': str(refresh.access_token),
+            'refresh_token': str(refresh)
         }
+
+        return data
 class ProfileSerializer(serializers.ModelSerializer):
     subscription_active = serializers.SerializerMethodField()
     current_plan = serializers.SerializerMethodField()

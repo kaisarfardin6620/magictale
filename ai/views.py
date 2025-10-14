@@ -8,6 +8,7 @@ from weasyprint import HTML
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import PermissionDenied, NotFound, ValidationError
 from .models import StoryProject
 from .serializers import (
     StoryProjectCreateSerializer,
@@ -52,7 +53,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         story_master_permission = IsStoryMaster()
         if request.data.get('length') == 'long':
             if not story_master_permission.has_permission(request, self):
-                return Response({"detail": IsStoryMaster.message}, status=status.HTTP_403_FORBIDDEN)
+                raise PermissionDenied(IsStoryMaster.message)
         
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -64,7 +65,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
     def latest(self, request):
         latest_story = StoryProject.objects.filter(user=request.user).order_by('-created_at').first()
         if not latest_story:
-            return Response({"detail": _("No stories found for this user.")}, status=status.HTTP_404_NOT_FOUND)
+            raise NotFound(_("No stories found for this user."))
         
         serializer = self.get_serializer(latest_story)
         return Response(serializer.data)
@@ -80,26 +81,28 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
                 f"story_{project.id}",
                 {"type": "progress", "event": {"progress": project.progress, "status": "canceled"}}
             )
-        return Response({"message": _("Cancellation request processed.")}, status=status.HTTP_200_OK)
+        serializer = self.get_serializer(project)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['post'], url_path='save-to-library')
     def save_to_library(self, request, pk=None):
         project = self.get_object()
         if project.status != StoryProject.Status.DONE:
-            return Response({"detail": _("This story cannot be saved as it is not complete.")}, status=status.HTTP_400_BAD_REQUEST)
+            raise ValidationError(_("This story cannot be saved as it is not complete."))
         project.is_saved = True
         project.save(update_fields=['is_saved'])
-        return Response({"message": _("Story successfully saved to your library.")}, status=status.HTTP_200_OK)
+        serializer = self.get_serializer(project)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['get'], url_path='download-pdf')
     def download_pdf(self, request, pk=None):
         story_master_permission = IsStoryMaster()
         if not story_master_permission.has_permission(request, self):
-            return Response({"detail": IsStoryMaster.message}, status=status.HTTP_403_FORBIDDEN)
+            raise PermissionDenied(IsStoryMaster.message)
         
         project = self.get_object()
         if project.status != StoryProject.Status.DONE:
-            return Response({"detail": _("Cannot generate PDF. Story is not yet complete.")}, status=status.HTTP_400_BAD_REQUEST)
+            raise ValidationError(_("Cannot generate PDF. Story is not yet complete."))
         
         context = {"project": project}
         html_string = render_to_string("ai/story_pdf_template.html", context)
@@ -121,7 +124,7 @@ class GenerationOptionsView(APIView):
         try:
             subscription = user.subscription
         except (AttributeError, user.subscription.RelatedObjectDoesNotExist):
-            return Response({"detail": "Subscription status not found."}, status=status.HTTP_404_NOT_FOUND)
+            raise NotFound("Subscription status not found.")
 
         themes = settings.ALL_THEMES
 
