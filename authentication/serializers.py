@@ -14,7 +14,7 @@ from .utils import send_email
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from fcm_django.models import FCMDevice
-import time 
+import time
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework.exceptions import AuthenticationFailed
 
@@ -121,9 +121,7 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
                     'type': device_type
                 }
             )
-        
         refresh = self.get_token(self.user)
-        
         data = {
             'token': str(refresh.access_token),
             'refresh_token': str(refresh)
@@ -134,19 +132,13 @@ class ProfileSerializer(serializers.ModelSerializer):
     subscription_active = serializers.SerializerMethodField()
     current_plan = serializers.SerializerMethodField()
     trial_end_date = serializers.SerializerMethodField()
-    profile_picture = serializers.SerializerMethodField()
+    profile_picture = serializers.CharField(source='profile_picture_url', read_only=True) # <-- CHANGED
     class Meta:
         model = UserProfile
         fields = [
             'profile_picture', 'phone_number', 'language', 'allow_push_notifications',
             'subscription_active', 'current_plan', 'trial_end_date'
         ]
-    def get_profile_picture(self, obj):
-        if obj.profile_picture and hasattr(obj.profile_picture, 'url'):
-            if settings.USE_S3_STORAGE:
-                return obj.profile_picture.url
-            return f"{settings.BACKEND_BASE_URL}{obj.profile_picture.url}"
-        return None
     def get_subscription_active(self, obj):
         try:
             return obj.user.subscription.status in ['active', 'trialing']

@@ -3,9 +3,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from django.core.validators import RegexValidator
 import uuid
-from django.contrib.auth.models import User
-from django.db import models
-from django.core.validators import RegexValidator
+from django.conf import settings
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
@@ -34,6 +32,14 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return self.user.username
+
+    @property
+    def profile_picture_url(self):
+        if self.profile_picture and hasattr(self.profile_picture, 'url'):
+            if settings.USE_S3_STORAGE:
+                return self.profile_picture.url
+            return f"{settings.BACKEND_BASE_URL}{self.profile_picture.url}"
+        return None
 
 
 class AuthToken(models.Model):

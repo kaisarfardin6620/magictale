@@ -1,5 +1,3 @@
-# dashboard/serializers.py
-
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from subscription.models import Subscription
@@ -23,12 +21,7 @@ class SubscriptionManagementSerializer(serializers.ModelSerializer):
         model = Subscription
         fields = ['id', 'user_name', 'current_plan', 'renewal_date', 'payment_method', 'status']
     def get_user_name(self, obj):
-        profile_picture_url = None
-        if hasattr(obj.user, 'profile') and obj.user.profile.profile_picture and hasattr(obj.user.profile.profile_picture, 'url'):
-            if settings.USE_S3_STORAGE:
-                profile_picture_url = obj.user.profile.profile_picture.url
-            else:
-                profile_picture_url = f"{settings.BACKEND_BASE_URL}{obj.user.profile.profile_picture.url}"
+        profile_picture_url = obj.user.profile.profile_picture_url if hasattr(obj.user, 'profile') else None
         return {"photo": profile_picture_url, "name": obj.user.get_full_name(), "email": obj.user.email}
     def get_renewal_date(self, obj):
         date_to_format = obj.trial_end if obj.status == 'trialing' else obj.current_period_end
@@ -65,18 +58,12 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
 
 class DashboardUserSerializer(serializers.ModelSerializer):
     plan = serializers.CharField(source='subscription.get_plan_display', read_only=True, default='Free')
-    profile_picture_url = serializers.SerializerMethodField()
+    profile_picture_url = serializers.CharField(source='profile.profile_picture_url', read_only=True) # <-- CHANGED
     date = serializers.DateTimeField(source='date_joined', format='%b %d, %Y')
     name = serializers.CharField(source='username')
     class Meta:
         model = User
         fields = ['id', 'profile_picture_url', 'name', 'email', 'date', 'plan']
-    def get_profile_picture_url(self, obj):
-        if hasattr(obj, 'profile') and obj.profile.profile_picture and hasattr(obj.profile.profile_picture, 'url'):
-            if settings.USE_S3_STORAGE:
-                return obj.profile.profile_picture.url
-            return f"{settings.BACKEND_BASE_URL}{obj.profile.profile_picture.url}"
-        return None
 
 class DashboardStorySerializer(serializers.ModelSerializer):
     title = serializers.CharField(source='theme')
@@ -92,16 +79,10 @@ class DashboardStorySerializer(serializers.ModelSerializer):
 
 class AdminProfileSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(source='profile.phone_number', read_only=True)
-    profile_picture_url = serializers.SerializerMethodField()
+    profile_picture_url = serializers.CharField(source='profile.profile_picture_url', read_only=True) # <-- CHANGED
     class Meta:
         model = User
         fields = ['id', 'first_name', 'last_name', 'email', 'phone_number', 'profile_picture_url']
-    def get_profile_picture_url(self, obj):
-        if hasattr(obj, 'profile') and obj.profile.profile_picture and hasattr(obj.profile.profile_picture, 'url'):
-            if settings.USE_S3_STORAGE:
-                return obj.profile.profile_picture.url
-            return f"{settings.BACKEND_BASE_URL}{obj.profile.profile_picture.url}"
-        return None
 
 class AdminProfileUpdateSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(source='profile.phone_number', required=False, allow_blank=True)
@@ -118,25 +99,17 @@ class AdminProfileUpdateSerializer(serializers.ModelSerializer):
         return value
 
     def update(self, instance, validated_data):
-        # --- THIS IS THE CORRECTED LOGIC ---
         profile_data = validated_data.pop('profile', {})
-        
-        # Update the User fields using the standard ModelSerializer method
         instance = super().update(instance, validated_data)
-        
-        # **CRITICAL FIX**: If the email was changed, we MUST also update the username
         if 'email' in validated_data:
             instance.username = validated_data['email']
             instance.save()
-
-        # Now, update the related UserProfile fields
         profile = instance.profile
         if profile_data:
             profile.phone_number = profile_data.get('phone_number', profile.phone_number)
             if 'profile_picture' in profile_data:
                 profile.profile_picture = profile_data.get('profile_picture', profile.profile_picture)
             profile.save()
-
         return instance
 
 class AdminChangePasswordSerializer(serializers.Serializer):
