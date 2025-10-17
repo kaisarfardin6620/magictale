@@ -50,7 +50,7 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'magictale.urls'
-ASGI_APPLICATION = 'magictale.asgi.application'
+ASGI_APPLICATION = 'magictale.asgi:application'
 
 DATABASES = {'default': env.db('DATABASE_URL', default=f'sqlite:///{BASE_DIR / "db.sqlite3"}')}
 DATABASES['default']['conn_max_age'] = 600
@@ -111,10 +111,17 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': ('rest_framework_simplejwt.authentication.JWTAuthentication',),
     'DEFAULT_RENDERER_CLASSES': ('magictale.api.renderers.CustomJSONRenderer',),
     'DEFAULT_THROTTLE_CLASSES': ['rest_framework.throttling.AnonRateThrottle', 'rest_framework.throttling.UserRateThrottle'],
-    'DEFAULT_THROTTLE_RATES': {'anon': '100/day', 'user': '1000/day','story_creation': '50/day',},
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/day',
+        'user': '1000/day',
+        'story_creation': '50/day',
+        'login': '5/min',
+        'password_reset': '5/hour',
+    },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination', 'PAGE_SIZE': 10,
     'EXCEPTION_HANDLER': 'magictale.api.exceptions.custom_exception_handler',
 }
+
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=7), 'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True, 'BLACKLIST_AFTER_ROTATION': True,
@@ -130,7 +137,8 @@ EMAIL_HOST_USER = env('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL')
 
-OPENAI_API_KEY = env("OPENAI_API_KEY")
+OPENAI_API_KEY = env("OPENAI_API_KEY", default=None)
+ELEVENLABS_API_KEY = env("ELEVENLABS_API_KEY", default=None)
 STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY")
 STRIPE_PUBLISHABLE_KEY = env("STRIPE_PUBLISHABLE_KEY")
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET")
@@ -150,6 +158,7 @@ else:
     CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
     CELERY_BROKER_URL, CELERY_RESULT_BACKEND = 'memory://', 'django-db'
     CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache', 'LOCATION': 'unique-snowflake-for-magictale'}}
+
 CELERY_ACCEPT_CONTENT, CELERY_TASK_SERIALIZER = ['json'], 'json'
 CELERY_RESULT_SERIALIZER, CELERY_TIMEZONE = 'json', 'UTC'
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
@@ -185,9 +194,34 @@ ALL_ART_STYLES_DATA = {
 }
 TIER_1_ART_STYLES = ["Watercolor Storybook", "Pixar-like", "Anime", "Paper-cut", "African Folktale"]
 ALL_ART_STYLES = list(ALL_ART_STYLES_DATA.keys())
-TIER_1_NARRATOR_VOICES = ['alloy', 'shimmer', 'nova']
-ALL_NARRATOR_VOICES = TIER_1_NARRATOR_VOICES + ['echo', 'fable', 'onyx']
 
-INTERNAL_IPS = [
-    "127.0.0.1",
+TIER_1_NARRATOR_VOICES = [
+    'EXAVITQu4vr4xnSDxMaL',  
+    'IKne3meq5aSn9XLyUdCD',  
+    'onwK4e9ZLuTAKqWW03F9',  
 ]
+
+ALL_NARRATOR_VOICES = [
+    '2EiwWnXFnvU5JabPnv8n', 'CwhRBWXzGAHq8TQ4Fs17', 'EXAVITQu4vr4xnSDxMaL',
+    'FGY2WhTYpPnrIDTdsKH5', 'IKne3meq5aSn9XLyUdCD', 'JBFqnCBsd6RMkjVDRZzb',
+    'N2lVS1w4EtoT3dr4eOWO', 'SAz9YHcvj6GT2YYXdXww', 'SOYHLrjzK2X1ezoPC6cr',
+    'TX3LPaxmHKxFdv7VOQHJ', 'Xb7hH8MSUJpSbSDYk0k2', 'XrExE9yKIg1WjnnlVkGX',
+    'bIHbv24MWmeRgasZH58o', 'cgSgspJ2msm6clMCkdW9', 'cjVigY5qzO86Huf0OWal',
+    'iP95p4xoKVk53GoZ742B', 'nPczCjzI2devNBz1zQrb', 'onwK4e9ZLuTAKqWW03F9',
+    'pFZP5JQG7iQjIQuC4Bku', 'pqHfZKP75CvOlQylNhV4'
+]
+
+ELEVENLABS_VOICE_MAP = {
+    '2EiwWnXFnvU5JabPnv8n': 'Clyde', 'CwhRBWXzGAHq8TQ4Fs17': 'Roger',
+    'EXAVITQu4vr4xnSDxMaL': 'Sarah', 'FGY2WhTYpPnrIDTdsKH5': 'Laura',
+    'IKne3meq5aSn9XLyUdCD': 'Charlie', 'JBFqnCBsd6RMkjVDRZzb': 'George',
+    'N2lVS1w4EtoT3dr4eOWO': 'Callum', 'SAz9YHcvj6GT2YYXdXww': 'River',
+    'SOYHLrjzK2X1ezoPC6cr': 'Harry', 'TX3LPaxmHKxFdv7VOQHJ': 'Liam',
+    'Xb7hH8MSUJpSbSDYk0k2': 'Alice', 'XrExE9yKIg1WjnnlVkGX': 'Matilda',
+    'bIHbv24MWmeRgasZH58o': 'Will', 'cgSgspJ2msm6clMCkdW9': 'Jessica',
+    'cjVigY5qzO86Huf0OWal': 'Eric', 'iP95p4xoKVk53GoZ742B': 'Chris',
+    'nPczCjzI2devNBz1zQrb': 'Brian', 'onwK4e9ZLuTAKqWW03F9': 'Daniel',
+    'pFZP5JQG7iQjIQuC4Bku': 'Lily', 'pqHfZKP75CvOlQylNhV4': 'Bill',
+}
+
+INTERNAL_IPS = ["127.0.0.1"]

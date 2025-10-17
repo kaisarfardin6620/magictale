@@ -27,11 +27,15 @@ from .serializers import (
 from subscription.models import Subscription
 from django.utils import timezone
 from datetime import timedelta
+from django.core.cache import cache
+from rest_framework.throttling import ScopedRateThrottle
 
 
 class MyTokenObtainPairView(APIView):
     permission_classes = [AllowAny]
     serializer_class = MyTokenObtainPairSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'login'
 
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data, context={'request': request})
@@ -111,6 +115,12 @@ class ResendVerificationEmailAPIView(APIView):
 class ProfileView(APIView):
     permission_classes = [IsAuthenticated]
     def get(self, request):
+        cache_key = f"user_profile_{request.user.id}"
+        cached_profile = cache.get(cache_key)
+
+        if cached_profile:
+            return Response(cached_profile, status=status.HTTP_200_OK)
+
         try:
             profile = UserProfile.objects.get(user=request.user)
             serializer = ProfileSerializer(profile)
@@ -118,6 +128,7 @@ class ProfileView(APIView):
                 'first_name': request.user.first_name, 'last_name': request.user.last_name, 'email': request.user.email,
             }
             response_data = {**user_data, **serializer.data}
+            cache.set(cache_key, response_data, timeout=3600) 
             return Response(response_data, status=status.HTTP_200_OK)
         except UserProfile.DoesNotExist:
             return Response({'detail': 'User profile not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -127,6 +138,7 @@ class ProfileView(APIView):
             serializer = UnifiedProfileUpdateSerializer(instance=profile, data=request.data, context={'request': request}, partial=True)
             if serializer.is_valid():
                 serializer.save()
+                cache.delete(f"user_profile_{request.user.id}") 
                 return Response({'message': 'Profile updated successfully.'}, status=status.HTTP_200_OK)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except UserProfile.DoesNotExist:
@@ -134,6 +146,9 @@ class ProfileView(APIView):
 
 class PasswordResetInitiateAPIView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle] 
+    throttle_scope = 'password_reset'      
+    
     def post(self, request):
         serializer = PasswordResetRequestSerializer(data=request.data)
         if serializer.is_valid():

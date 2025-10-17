@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import StoryProject, StoryPage
 from authentication.models import OnboardingStatus
-from django.conf import settings 
+from django.conf import settings
 
 class StoryPageSerializer(serializers.ModelSerializer):
     class Meta:
@@ -22,35 +22,45 @@ class StoryProjectCreateSerializer(serializers.ModelSerializer):
             "voice", "length", "difficulty", "model_used"
         ]
         read_only_fields = ["id"]
+
+    # vvv --- REPLACE THIS ENTIRE METHOD WITH THE DEBUG VERSION --- vvv
     def validate(self, data):
         """
-        Validates the chosen art style and voice against the user's subscription plan.
-        This is the security check that prevents a user from submitting a value for a
-        premium feature they don't have access to.
+        [DEBUGGING VERSION] Validates the chosen art style and voice.
         """
         user = self.context["request"].user
+        print("\n--- STARTING VALIDATION ---")
         try:
             subscription = user.subscription
+            print(f"User '{user.username}' found with subscription.")
+            print(f"  -> Plan: '{subscription.plan}'")
+            print(f"  -> Status: '{subscription.status}'")
         except (AttributeError, user.subscription.RelatedObjectDoesNotExist):
-            raise serializers.ValidationError("Cannot determine subscription status for validation.")
+            subscription = type('obj', (object,), {'plan': 'trial', 'status': 'trialing'})()
+            print("User has no subscription object. Using default trial status.")
 
-        allowed_styles = settings.TIER_1_ART_STYLES
-        allowed_voices = settings.TIER_1_NARRATOR_VOICES
+        is_master_plan = subscription.plan == 'master' and subscription.status == 'active'
+        print(f"Is Master Plan? -> {is_master_plan}")
 
-        if subscription.plan == 'master' and subscription.status == 'active':
-            allowed_styles = settings.ALL_ART_STYLES
-            allowed_voices = settings.ALL_NARRATOR_VOICES
+        allowed_voices = settings.ALL_NARRATOR_VOICES if is_master_plan else settings.TIER_1_NARRATOR_VOICES
+        print(f"Allowed Voices: {allowed_voices}")
 
+        submitted_voice = data.get('voice')
+        print(f"Submitted Voice: '{submitted_voice}'")
+        
+        if submitted_voice and submitted_voice not in allowed_voices:
+            print("--- VALIDATION FAILED: Submitted voice not in allowed list. ---")
+            raise serializers.ValidationError({
+                'voice': f"The selected narrator voice is not available for your current plan."
+            })
+        
+        print("--- VALIDATION PASSED ---\n")
+        # ... (the rest of the validation remains the same)
         submitted_style = data.get('art_style')
+        allowed_styles = settings.ALL_ART_STYLES if is_master_plan else settings.TIER_1_ART_STYLES
         if submitted_style and submitted_style not in allowed_styles:
             raise serializers.ValidationError({
                 'art_style': f"The '{submitted_style}' art style is not available for your current plan."
-            })
-            
-        submitted_voice = data.get('voice')
-        if submitted_voice and submitted_voice not in allowed_voices:
-            raise serializers.ValidationError({
-                'voice': f"The selected narrator voice is not available for your current plan."
             })
             
         submitted_theme = data.get('theme')

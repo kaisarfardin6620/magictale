@@ -16,9 +16,12 @@ import logging
 import tempfile
 from .models import StoryProject, GenerationEvent, StoryPage
 from .prompts import get_story_prompts
+from elevenlabs.client import ElevenLabs
+from elevenlabs import Voice, VoiceSettings
 
+openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+elevenlabs_client = ElevenLabs(api_key=settings.ELEVENLABS_API_KEY)
 
-client = OpenAI(api_key=getattr(settings, "OPENAI_API_KEY", None))
 logger = logging.getLogger(__name__)
 
 LENGTH_TO_TOKENS = {
@@ -81,7 +84,7 @@ def _split_text_into_pages(full_text: str):
 
 def _generate_synopsis_and_tags_sync(full_text: str):
     synopsis_prompt = _build_synopsis_prompt(full_text)
-    synopsis_resp = client.chat.completions.create(
+    synopsis_resp = openai_client.chat.completions.create(
         model=DEFAULT_TEXT_MODEL, messages=[{"role": "user", "content": synopsis_prompt}],
         response_format={"type": "json_object"}, temperature=0.5, timeout=30.0
     )
@@ -97,7 +100,7 @@ def _generate_synopsis_and_tags_sync(full_text: str):
     return metadata
 def _generate_cover_image_sync(metadata: dict, project: StoryProject):
     image_prompt = _build_cover_image_prompt(metadata.get("synopsis", project.theme), project)
-    image_resp = client.images.generate(
+    image_resp = openai_client.images.generate(
         model=settings.AI_IMAGE_MODEL, prompt=image_prompt, n=1, size="1024x1024",
         response_format="url", timeout=120.0
     )
@@ -113,21 +116,31 @@ def _build_cover_image_prompt(synopsis: str, project: StoryProject) -> str:
     prompt_subject = synopsis if synopsis and len(synopsis) > 20 else project.theme
     return (prompt_dir / "cover_image_prompt.txt").read_text().format(art_style=project.art_style, prompt_subject=prompt_subject)
 
+# vvv --- THIS IS THE FINAL CORRECTED FUNCTION --- vvv
 async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
     try:
-        audio_resp_chunk = await api_with_retry(
-            client.audio.speech.create, model=settings.AI_AUDIO_MODEL,
-            voice=project.voice or "alloy", input=page.text, timeout=60.0
+        voice_id = project.voice or settings.TIER_1_NARRATOR_VOICES[0]
+
+        # The API call returns a generator (a stream of audio chunks)
+        audio_stream = await api_with_retry(
+            elevenlabs_client.text_to_speech.convert,
+            voice_id=voice_id,
+            text=page.text,
+            model_id="eleven_multilingual_v2", 
         )
-        audio_content = audio_resp_chunk.content
+        
+        # We must consume the generator to join all the chunks into a single bytes object
+        audio_content = b"".join(audio_stream)
+        
         chunk_file_path = f"audio/chunks/story_{project.id}_page_{page.index}.mp3"
         saved_chunk_path = await sync_to_async(default_storage.save)(chunk_file_path, ContentFile(audio_content))
         page.audio_url = await sync_to_async(default_storage.url)(saved_chunk_path)
         await sync_to_async(page.save)()
         return io.BytesIO(audio_content)
     except Exception as e:
-        logger.error(f"Failed to generate audio for page {page.index} (Project {project.id}): {e}")
+        logger.error(f"Failed to generate ElevenLabs audio for page {page.index} (Project {project.id}): {e}")
         return None
+# ^^^ --- END OF CORRECTED FUNCTION --- ^^^
 
 async def _cleanup_audio_chunks(project_id: int):
     try:
@@ -156,7 +169,7 @@ async def generate_text_logic(project_id: int):
 
     token_limit = LENGTH_TO_TOKENS.get(project.length, 2000)
     text_resp = await api_with_retry(
-        client.chat.completions.create, model=project.model_used or DEFAULT_TEXT_MODEL,
+        openai_client.chat.completions.create, model=project.model_used or DEFAULT_TEXT_MODEL,
         messages=[{"role": "system", "content": str(system_prompt)}, {"role": "user", "content": str(user_prompt)}],
         temperature=0.8, timeout=90.0, max_tokens=token_limit, seed=project_id
     )

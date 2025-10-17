@@ -145,7 +145,6 @@ class GenerationOptionsView(APIView):
         is_master_plan = subscription.plan == 'master' and subscription.status == 'active'
 
         allowed_style_names = settings.ALL_ART_STYLES if is_master_plan else settings.TIER_1_ART_STYLES
-        
         art_styles = [
             {
                 "name": name,
@@ -155,7 +154,12 @@ class GenerationOptionsView(APIView):
             } for name in allowed_style_names
         ]
 
-        voices = settings.ALL_NARRATOR_VOICES if is_master_plan else settings.TIER_1_NARRATOR_VOICES
+        allowed_voice_ids = settings.ALL_NARRATOR_VOICES if is_master_plan else settings.TIER_1_NARRATOR_VOICES
+
+        voices = [
+            {"id": voice_id, "name": settings.ELEVENLABS_VOICE_MAP.get(voice_id, "Unknown")}
+            for voice_id in allowed_voice_ids
+        ]
 
         response_data = {
             "themes": themes,

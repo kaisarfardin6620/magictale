@@ -41,10 +41,6 @@ class IsOwner(permissions.BasePermission):
         return False
 
 class IsStoryMaster(permissions.BasePermission):
-    """
-    Allows access to users with the 'master' plan OR users in a valid trial.
-    This protects Tier 2 features while allowing trial users to experience them.
-    """
     message = "This feature requires a Story Master subscription."
 
     def has_permission(self, request, view):
@@ -58,12 +54,4 @@ class IsStoryMaster(permissions.BasePermission):
             self.message = "You do not have a subscription or trial."
             return False
         
-        is_active_master = subscription.plan == 'master' and subscription.status == 'active'
-        
-        is_in_trial = (
-            subscription.status == 'trialing' and
-            subscription.trial_end is not None and
-            subscription.trial_end > timezone.now()
-        )
-        
-        return is_active_master or is_in_trial
+        return subscription.plan == 'master' and subscription.status == 'active'
