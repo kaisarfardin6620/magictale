@@ -186,26 +186,28 @@ AI_TEXT_MODEL = env("AI_TEXT_MODEL", default="gpt-4-turbo")
 AI_IMAGE_MODEL = env("AI_IMAGE_MODEL", default="dall-e-3")
 AI_AUDIO_MODEL = env("AI_AUDIO_MODEL", default="tts-1")
 
-ALL_THEMES = ["Space Cosmic Adventures",
-                "Ocean Underwater Tales",
-                "Jungle Wild Explorations",
-                "City Urban Adventures",
-                "Fantasy Magical Worlds",
-                "Folktale Classsic Stories"]
-ALL_ART_STYLES_DATA = {
-    "Watercolor Storybook soft, dreamy illustrations with flowing colors": "style_watercolor.png",
-    "Pixar-like 3d animated characters with vibrant colors": "style_pixar.png",
-    "Anime japanese animation style with expressive characters": "style_anime.png",
-    "Paper-cut layered paper artwork with dimensional depth": "style_papercut.png",
-    "African Folktale traditional cultural art with rich patterns": "style_folktale.png",
-    "Clay stop-motion clay figures with texture": "style_clay.png",
-}
-TIER_1_ART_STYLES = ["Watercolor Storybook soft, dreamy illustrations with flowing colors",
-                    "Pixar-like 3d animated characters with vibrant colors",
-                    "Anime japanese animation style with expressive characters",
-                    "Paper-cut layered paper artwork with dimensional depth",
-                    "African Folktale traditional cultural art with rich patterns"]
-ALL_ART_STYLES = list(ALL_ART_STYLES_DATA.keys())
+ALL_THEMES_DATA = [
+    {"id": "space", "name": "Space Cosmic Adventures"},
+    {"id": "ocean", "name": "Ocean Underwater Tales"},
+    {"id": "jungle", "name": "Jungle Wild Explorations"},
+    {"id": "city", "name": "City Urban Adventures"},
+    {"id": "fantasy", "name": "Fantasy Magical Worlds"},
+    {"id": "folktale", "name": "Folktale Classic Stories"},
+]
+
+ALL_ART_STYLES_DATA = [
+    {"id": "watercolor", "name": "Watercolor Storybook", "description": "soft, dreamy illustrations with flowing colors", "image_file": "style_watercolor.png"},
+    {"id": "pixar", "name": "Pixar-like", "description": "3d animated characters with vibrant colors", "image_file": "style_pixar.png"},
+    {"id": "anime", "name": "Anime", "description": "japanese animation style with expressive characters", "image_file": "style_anime.png"},
+    {"id": "papercut", "name": "Paper-cut", "description": "layered paper artwork with dimensional depth", "image_file": "style_papercut.png"},
+    {"id": "african_folktale", "name": "African Folktale", "description": "traditional cultural art with rich patterns", "image_file": "style_folktale.png"},
+    {"id": "clay", "name": "Clay", "description": "stop-motion clay figures with texture", "image_file": "style_clay.png"},
+]
+
+TIER_1_ART_STYLE_IDS = ["watercolor", "pixar", "anime", "papercut", "african_folktale"]
+
+THEME_ID_TO_NAME_MAP = {item['id']: item['name'] for item in ALL_THEMES_DATA}
+ART_STYLE_ID_TO_NAME_MAP = {item['id']: item['name'] for item in ALL_ART_STYLES_DATA}
 
 TIER_1_NARRATOR_VOICES = [
     'EXAVITQu4vr4xnSDxMaL',  

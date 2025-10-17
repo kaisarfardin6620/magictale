@@ -140,27 +140,27 @@ class GenerationOptionsView(APIView):
         except (AttributeError, user.subscription.RelatedObjectDoesNotExist):
             subscription = type('obj', (object,), {'plan': 'creator', 'status': 'trialing'})()
 
-        themes = settings.ALL_THEMES
-
         is_master_plan = subscription.plan == 'master' and subscription.status == 'active'
-
-        allowed_style_names = settings.ALL_ART_STYLES if is_master_plan else settings.TIER_1_ART_STYLES
-        art_styles = [
-            {
-                "name": name,
-                "image_url": request.build_absolute_uri(
-                    staticfiles_storage.url(f"images/art_styles/{settings.ALL_ART_STYLES_DATA[name]}")
-                )
-            } for name in allowed_style_names
-        ]
+        themes = settings.ALL_THEMES_DATA
+        allowed_style_ids = list(settings.ART_STYLE_ID_TO_NAME_MAP.keys()) if is_master_plan else settings.TIER_1_ART_STYLE_IDS
+        art_styles = []
+        for style in settings.ALL_ART_STYLES_DATA:
+            if style['id'] in allowed_style_ids:
+                art_styles.append({
+                    "id": style['id'],
+                    "name": style['name'],
+                    "description": style['description'],
+                    "image_url": request.build_absolute_uri(
+                        staticfiles_storage.url(f"images/art_styles/{style['image_file']}")
+                    )
+                })
 
         allowed_voice_ids = settings.ALL_NARRATOR_VOICES if is_master_plan else settings.TIER_1_NARRATOR_VOICES
-
         voices = [
             {"id": voice_id, "name": settings.ELEVENLABS_VOICE_MAP.get(voice_id, "Unknown")}
             for voice_id in allowed_voice_ids
         ]
-
+        
         response_data = {
             "themes": themes,
             "art_styles": art_styles,
