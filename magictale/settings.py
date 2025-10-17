@@ -186,13 +186,25 @@ AI_TEXT_MODEL = env("AI_TEXT_MODEL", default="gpt-4-turbo")
 AI_IMAGE_MODEL = env("AI_IMAGE_MODEL", default="dall-e-3")
 AI_AUDIO_MODEL = env("AI_AUDIO_MODEL", default="tts-1")
 
-ALL_THEMES = ["Space", "Ocean", "Jungle", "City", "Fantasy", "Folktale"]
+ALL_THEMES = ["Space Cosmic Adventures",
+                "Ocean Underwater Tales",
+                "Jungle Wild Explorations",
+                "City Urban Adventures",
+                "Fantasy Magical Worlds",
+                "Folktale Classsic Stories"]
 ALL_ART_STYLES_DATA = {
-    "Watercolor Storybook": "style_watercolor.png", "Pixar-like": "style_pixar.png",
-    "Anime": "style_anime.png", "Paper-cut": "style_papercut.png",
-    "African Folktale": "style_folktale.png", "Clay": "style_clay.png",
+    "Watercolor Storybook soft, dreamy illustrations with flowing colors": "style_watercolor.png",
+    "Pixar-like 3d animated characters with vibrant colors": "style_pixar.png",
+    "Anime japanese animation style with expressive characters": "style_anime.png",
+    "Paper-cut layered paper artwork with dimensional depth": "style_papercut.png",
+    "African Folktale traditional cultural art with rich patterns": "style_folktale.png",
+    "Clay stop-motion clay figures with texture": "style_clay.png",
 }
-TIER_1_ART_STYLES = ["Watercolor Storybook", "Pixar-like", "Anime", "Paper-cut", "African Folktale"]
+TIER_1_ART_STYLES = ["Watercolor Storybook soft, dreamy illustrations with flowing colors",
+                    "Pixar-like 3d animated characters with vibrant colors",
+                    "Anime japanese animation style with expressive characters",
+                    "Paper-cut layered paper artwork with dimensional depth",
+                    "African Folktale traditional cultural art with rich patterns"]
 ALL_ART_STYLES = list(ALL_ART_STYLES_DATA.keys())
 
 TIER_1_NARRATOR_VOICES = [
