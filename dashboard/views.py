@@ -14,13 +14,13 @@ from .serializers import (
     DashboardUserSerializer,
     DashboardStorySerializer,
     AdminProfileSerializer,
-    AdminProfileUpdateSerializer, 
+    AdminProfileUpdateSerializer,
     AdminChangePasswordSerializer
 )
 
 from datetime import timedelta, datetime
 from django.utils import timezone
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.db.models.functions import TruncMonth
 from django.conf import settings
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
@@ -32,7 +32,7 @@ from django.template.loader import render_to_string
 from authentication.models import UserProfile
 from django.core.cache import cache
 from rest_framework.exceptions import ValidationError
-from . import services 
+from . import services
 
 
 class DashboardStatsAPIView(APIView):
@@ -47,12 +47,29 @@ class DashboardStatsAPIView(APIView):
 
         now = timezone.now()
         last_month_start = now - timedelta(days=30)
-        total_users = User.objects.count()
-        users_this_month = User.objects.filter(date_joined__gte=last_month_start).count()
-        active_subscriptions = Subscription.objects.filter(status__in=['active', 'trialing']).count()
-        active_subs_this_month = Subscription.objects.filter(status__in=['active', 'trialing'], trial_start__gte=last_month_start).count()
-        total_stories = StoryProject.objects.count()
-        stories_this_month = StoryProject.objects.filter(created_at__gte=last_month_start).count()
+
+        user_stats = User.objects.aggregate(
+            total_users=Count('id'),
+            users_this_month=Count('id', filter=Q(date_joined__gte=last_month_start))
+        )
+
+        subscription_stats = Subscription.objects.aggregate(
+            active_subscriptions=Count('id', filter=Q(status__in=['active', 'trialing'])),
+            active_subs_this_month=Count('id', filter=Q(status__in=['active', 'trialing'], trial_start__gte=last_month_start))
+        )
+
+        story_stats = StoryProject.objects.aggregate(
+            total_stories=Count('id'),
+            stories_this_month=Count('id', filter=Q(created_at__gte=last_month_start))
+        )
+
+        total_users = user_stats['total_users']
+        users_this_month = user_stats['users_this_month']
+        active_subscriptions = subscription_stats['active_subscriptions']
+        active_subs_this_month = subscription_stats['active_subs_this_month']
+        total_stories = story_stats['total_stories']
+        stories_this_month = story_stats['stories_this_month']
+
         user_list = User.objects.select_related('profile', 'subscription').order_by('-date_joined')
         user_paginator = Paginator(user_list, 10)
         user_page_number = request.query_params.get('user_page', 1)
@@ -83,7 +100,7 @@ class DashboardStatsAPIView(APIView):
                 params = request.query_params.copy()
                 params[page_param_name] = paginated_qs.previous_page_number()
                 return f"{scheme}://{host}{path}?{params.urlencode()}"
-            return None  
+            return None
         data = {
             'stats': {
                 'total_users': {'value': total_users, 'change': self._calculate_change(total_users - users_this_month, users_this_month)},
@@ -94,9 +111,7 @@ class DashboardStatsAPIView(APIView):
             'recent_signups': {'count': user_paginator.count, 'num_pages': user_paginator.num_pages, 'current_page': paginated_users.number, 'next': get_next_url(paginated_users, 'user_page'), 'previous': get_previous_url(paginated_users, 'user_page'), 'results': user_serializer.data},
             'recent_stories': {'count': story_paginator.count, 'num_pages': story_paginator.num_pages, 'current_page': paginated_stories.number, 'next': get_next_url(paginated_stories, 'story_page'), 'previous': get_previous_url(paginated_stories, 'story_page'), 'results': story_serializer.data}
         }
-        
         cache.set(cache_key, data, timeout=900)
-        
         return Response(data)
     def _calculate_change(self, old, new):
         if old <= 0: return 100.0 if new > 0 else 0.0
@@ -172,7 +187,7 @@ class LanguageListView(APIView):
 
 class AdminProfileView(APIView):
     permission_classes = [IsAdminUser]
-    
+
     def get(self, request):
         UserProfile.objects.get_or_create(user=request.user)
         serializer = AdminProfileSerializer(request.user)
@@ -180,13 +195,13 @@ class AdminProfileView(APIView):
 
     def put(self, request):
         user = request.user
-        
+
         try:
             if 'new_password' in request.data and 'current_password' in request.data:
                 services.change_admin_password(user, data=request.data, context={'request': request})
 
             services.update_admin_profile(user, data=request.data, context={'request': request})
-            
+
         except ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
 
@@ -207,7 +222,7 @@ class UserManagementViewSet(viewsets.ModelViewSet):
         user = self.get_object()
         if user.is_active:
             return Response({'detail': 'User is already active.'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         user.is_active = True
         user.save()
 
@@ -222,9 +237,9 @@ class UserManagementViewSet(viewsets.ModelViewSet):
         user = self.get_object()
         email = user.email
         user.delete()
-        
+
         send_email('MagicTale Account Application Update', 'We regret to inform you that your account application was not approved at this time.', [email])
-        
+
         return Response({'status': f'User {email} has been denied and deleted.'}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='deactivate')

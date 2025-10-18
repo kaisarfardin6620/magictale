@@ -14,15 +14,17 @@ from .engine import (
     _send,
     _cleanup_audio_chunks,
     generate_text_logic,
-    generate_metadata_and_cover_logic,
     generate_audio_logic,
-    handle_generation_failure
+    handle_generation_failure,
+    openai_client,
 )
+from django.conf import settings
+from pathlib import Path
 import time
 import requests
 import io
 from PIL import Image
-
+import asyncio
 
 RETRYABLE_EXCEPTIONS = (
     openai.APITimeoutError,
@@ -36,7 +38,6 @@ def on_pipeline_failure(self, exc, task_id, args, kwargs, einfo):
     print(f"PIPELINE FAILED: Task {self.name} for project {project_id} failed permanently. Reason: {exc}")
     async_to_sync(handle_generation_failure)(project_id, exc)
 
-
 @shared_task(
     bind=True,
     autoretry_for=RETRYABLE_EXCEPTIONS,
@@ -48,34 +49,72 @@ def generate_text_task(self, project_id: int):
     print(f"Starting STAGE 1: TEXT for project {project_id}")
     async_to_sync(generate_text_logic)(project_id)
     print(f"Finished STAGE 1: TEXT for project {project_id}")
+    return project_id 
+
+# vvv --- THIS FUNCTION NOW CORRECTLY COMBINES THE STORY PARTS --- vvv
+async def remix_text_logic(project_id: int, choice_id: str):
+    project = await _reload_project(project_id)
+    if not project or project.status != 'running': return
+
+    await _save_event(project, "remix_start", {"choice_id": choice_id})
+    await _send(project_id, {"status": "running", "progress": 5, "message": _("Changing the story's path...")})
+
+    choice_description = "A new adventure."
+    for theme_data in settings.ALL_THEMES_DATA.values():
+        for choice in theme_data['choices']:
+            if choice['id'] == choice_id:
+                choice_description = choice['description']
+                break
+
+    prompt_dir = Path(__file__).parent / "prompts"
+    remix_prompt_template = (prompt_dir / "remix_prompt.txt").read_text()
+    
+    original_paragraphs = project.text.split('\n\n')
+    first_half_text = "\n\n".join(original_paragraphs[:len(original_paragraphs)//2])
+
+    remix_prompt = remix_prompt_template.format(
+        original_story_beginning=first_half_text,
+        choice_description=choice_description
+    )
+    
+    text_resp = await openai_client.chat.completions.create(
+        model=project.model_used or "gpt-4-turbo",
+        messages=[{"role": "user", "content": remix_prompt}],
+        temperature=0.8,
+        timeout=90.0
+    )
+    
+    new_second_half = text_resp.choices[0].message.content.strip() if text_resp.choices else ""
+    if not new_second_half: raise ValueError("AI returned an empty remixed story.")
+    
+    # --- THIS IS THE CRITICAL FIX ---
+    # Combine the original beginning with the new ending
+    new_full_text = first_half_text + "\n\n" + new_second_half
+    # --------------------------------
+
+    await _update_project_state(project, progress=30, text=new_full_text)
+    
+    from .engine import _split_text_into_pages, _delete_pages, _create_page
+    page_texts = _split_text_into_pages(new_full_text)
+    await _delete_pages(project)
+    # Correctly use asyncio.gather for creating pages
+    await asyncio.gather(*[_create_page(project, i, text) for i, text in enumerate(page_texts, start=1)])
+    await _save_event(project, "remix_done", {"pages_created": len(page_texts)})
+# ^^^ --- END OF CORRECTED FUNCTION --- ^^^
+
+
+@shared_task(
+    bind=True,
+    autoretry_for=RETRYABLE_EXCEPTIONS,
+    retry_kwargs={'max_retries': 3, 'countdown': 60},
+    on_failure=on_pipeline_failure
+)
+def remix_text_task(self, project_id: int, choice_id: str):
+    print(f"Starting REMIX: TEXT for project {project_id}")
+    async_to_sync(remix_text_logic)(project_id, choice_id)
+    print(f"Finished REMIX: TEXT for project {project_id}")
     return project_id
 
-@shared_task
-def optimize_cover_image_task(project_id: int):
-    print(f"Starting image optimization for project {project_id}")
-    try:
-        project = StoryProject.objects.get(id=project_id)
-        if not project.cover_image_url:
-            print(f"No cover image URL for project {project_id}. Skipping optimization.")
-            return
-
-        response = requests.get(project.cover_image_url)
-        response.raise_for_status()
-        image_file = io.BytesIO(response.content)
-        img = Image.open(image_file)
-        buffer = io.BytesIO()
-        img.convert('RGB').save(buffer, format='JPEG', quality=85, optimize=True)
-        buffer.seek(0)
-        optimized_file_path = f'images/covers/optimized/story_{project.id}_cover.jpg'
-        new_file = ContentFile(buffer.read())
-        saved_path = default_storage.save(optimized_file_path, new_file)
-        project.cover_image_url = default_storage.url(saved_path)
-        project.save(update_fields=['cover_image_url'])
-        print(f"Successfully optimized and updated cover image for project {project_id}")
-    except StoryProject.DoesNotExist:
-        print(f"Error optimizing image: StoryProject with id={project_id} not found.")
-    except Exception as e:
-        print(f"An unexpected error occurred during image optimization for project {project_id}: {e}")
 @shared_task(
     bind=True,
     autoretry_for=RETRYABLE_EXCEPTIONS,
@@ -83,10 +122,11 @@ def optimize_cover_image_task(project_id: int):
     on_failure=on_pipeline_failure
 )
 def generate_metadata_and_cover_task(self, project_id: int):
+    from .engine import generate_metadata_and_cover_logic
     print(f"Starting STAGE 2: METADATA/COVER for project {project_id}")
     async_to_sync(generate_metadata_and_cover_logic)(project_id)
-    print(f"Finished STAGE 2: METADATA/COVER for project {project_id}")
     optimize_cover_image_task.delay(project_id)
+    print(f"Finished STAGE 2: METADATA/COVER for project {project_id}")
     return project_id
 
 @shared_task(
@@ -110,6 +150,29 @@ def generate_audio_task(self, project_id: int):
         
     return project_id
 
+@shared_task
+def optimize_cover_image_task(project_id: int):
+    print(f"Starting image optimization for project {project_id}")
+    try:
+        project = StoryProject.objects.get(id=project_id)
+        if not project.cover_image_url:
+            return
+        response = requests.get(project.cover_image_url)
+        response.raise_for_status()
+        image_file = io.BytesIO(response.content)
+        img = Image.open(image_file)
+        buffer = io.BytesIO()
+        img.convert('RGB').save(buffer, format='JPEG', quality=85, optimize=True)
+        buffer.seek(0)
+        optimized_file_path = f'images/covers/optimized/story_{project.id}_cover.jpg'
+        new_file = ContentFile(buffer.read())
+        saved_path = default_storage.save(optimized_file_path, new_file)
+        project.cover_image_url = default_storage.url(saved_path)
+        project.save(update_fields=['cover_image_url'])
+        print(f"Successfully optimized and updated cover image for project {project_id}")
+    except Exception as e:
+        print(f"An unexpected error occurred during image optimization for project {project_id}: {e}")
+
 def start_story_generation_pipeline(project_id: int):
     pipeline = chain(
         generate_text_task.s(project_id),
@@ -119,7 +182,14 @@ def start_story_generation_pipeline(project_id: int):
     print(f"Dispatching generation pipeline for project {project_id}")
     pipeline.apply_async()
 
-
+def start_story_remix_pipeline(project_id: int, choice_id: str):
+    """A shorter pipeline that only remixes text and regenerates audio."""
+    pipeline = chain(
+        remix_text_task.s(project_id, choice_id),
+        generate_audio_task.s()
+    )
+    print(f"Dispatching REMIX pipeline for project {project_id}")
+    pipeline.apply_async()
 
 @shared_task(bind=True)
 def generate_pdf_task(self, project_id: int):
@@ -129,13 +199,10 @@ def generate_pdf_task(self, project_id: int):
         context = {"project": project}
         html_string = render_to_string("ai/story_pdf_template.html", context)
         pdf_file_bytes = HTML(string=html_string).write_pdf()
-
         file_path = f'pdfs/story_{project.id}_{project.child_name}.pdf'
         default_storage.save(file_path, ContentFile(pdf_file_bytes))
         pdf_url = default_storage.url(file_path)
-
         print(f"Successfully generated and saved PDF for project {project_id} at {pdf_url}")
-
         notification_payload = {
             "type": "progress", 
             "event": {
@@ -145,7 +212,6 @@ def generate_pdf_task(self, project_id: int):
             }
         }
         async_to_sync(_send)(project_id, notification_payload)
-
     except StoryProject.DoesNotExist:
         print(f"Error generating PDF: StoryProject with id={project_id} not found.")
     except Exception as e:

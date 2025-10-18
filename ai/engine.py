@@ -7,20 +7,19 @@ from django.utils import timezone
 from asgiref.sync import sync_to_async
 from channels.layers import get_channel_layer
 from django.conf import settings
-from openai import OpenAI, RateLimitError, APIError
+from openai import AsyncOpenAI, RateLimitError, APIError
+from elevenlabs.client import AsyncElevenLabs
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from pydub import AudioSegment
 from django.utils.translation import gettext_lazy as _
 import logging
-import tempfile
 from .models import StoryProject, GenerationEvent, StoryPage
 from .prompts import get_story_prompts
-from elevenlabs.client import ElevenLabs
 from elevenlabs import Voice, VoiceSettings
 
-openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
-elevenlabs_client = ElevenLabs(api_key=settings.ELEVENLABS_API_KEY)
+openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+elevenlabs_client = AsyncElevenLabs(api_key=settings.ELEVENLABS_API_KEY)
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +28,10 @@ LENGTH_TO_TOKENS = {
 }
 DEFAULT_TEXT_MODEL = getattr(settings, "AI_TEXT_MODEL", "gpt-4-turbo")
 
-async def api_with_retry(func, *args, max_retries=3, **kwargs):
+async def api_with_retry(async_func, *args, max_retries=3, **kwargs):
     for attempt in range(max_retries):
         try:
-            return await asyncio.to_thread(func, *args, **kwargs)
+            return await async_func(*args, **kwargs)
         except Exception as e:
             if attempt == max_retries - 1:
                 logger.error(f"API call failed after {max_retries} attempts: {e}")
@@ -82,9 +81,10 @@ def _split_text_into_pages(full_text: str):
         pages.append("\n\n".join(paragraphs[i:i+3]))
     return pages
 
-def _generate_synopsis_and_tags_sync(full_text: str):
+async def _generate_synopsis_and_tags_async(full_text: str):
     synopsis_prompt = _build_synopsis_prompt(full_text)
-    synopsis_resp = openai_client.chat.completions.create(
+    synopsis_resp = await api_with_retry(
+        openai_client.chat.completions.create,
         model=DEFAULT_TEXT_MODEL, messages=[{"role": "user", "content": synopsis_prompt}],
         response_format={"type": "json_object"}, temperature=0.5, timeout=30.0
     )
@@ -98,10 +98,11 @@ def _generate_synopsis_and_tags_sync(full_text: str):
         logger.error(f"Failed to parse synopsis JSON: {e}")
         metadata = {"synopsis": _("A magical adventure awaits!"), "tags": "Adventure, Magic"}
     return metadata
-def _generate_cover_image_sync(metadata: dict, project: StoryProject):
+async def _generate_cover_image_async(metadata: dict, project: StoryProject):
     theme_name = settings.THEME_ID_TO_NAME_MAP.get(project.theme, project.theme)
     image_prompt = _build_cover_image_prompt(metadata.get("synopsis", theme_name), project)
-    image_resp = openai_client.images.generate(
+    image_resp = await api_with_retry(
+        openai_client.images.generate,
         model=settings.AI_IMAGE_MODEL, prompt=image_prompt, n=1, size="1024x1024",
         response_format="url", timeout=120.0
     )
@@ -119,16 +120,18 @@ def _build_cover_image_prompt(synopsis: str, project: StoryProject) -> str:
     art_style_name = settings.ART_STYLE_ID_TO_NAME_MAP.get(project.art_style, project.art_style)
     return (prompt_dir / "cover_image_prompt.txt").read_text().format(art_style=art_style_name, prompt_subject=prompt_subject)
 
-async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
+async def _generate_audio_for_page(page: StoryProject, project: StoryProject):
     try:
         voice_id = project.voice or settings.TIER_1_NARRATOR_VOICES[0]
-        audio_stream = await api_with_retry(
-            elevenlabs_client.text_to_speech.convert,
+        
+        audio_stream = elevenlabs_client.text_to_speech.convert(
             voice_id=voice_id,
             text=page.text,
-            model_id="eleven_multilingual_v2", 
+            model_id="eleven_multilingual_v2",
         )
-        audio_content = b"".join(audio_stream)
+        
+        audio_content = b"".join([chunk async for chunk in audio_stream])
+        
         chunk_file_path = f"audio/chunks/story_{project.id}_page_{page.index}.mp3"
         saved_chunk_path = await sync_to_async(default_storage.save)(chunk_file_path, ContentFile(audio_content))
         page.audio_url = await sync_to_async(default_storage.url)(saved_chunk_path)
@@ -137,7 +140,6 @@ async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
     except Exception as e:
         logger.error(f"Failed to generate ElevenLabs audio for page {page.index} (Project {project.id}): {e}")
         return None
-
 
 async def _cleanup_audio_chunks(project_id: int):
     try:
@@ -188,10 +190,8 @@ async def generate_metadata_and_cover_logic(project_id: int):
 
     await _save_event(project, "stage2_start", {})
     await _send(project_id, {"progress": 40, "message": _("Summarizing and drawing the cover...")})
-
-    metadata = await api_with_retry(_generate_synopsis_and_tags_sync, project.text)
-    image_metadata = await api_with_retry(_generate_cover_image_sync, metadata, project)
-
+    metadata = await _generate_synopsis_and_tags_async(project.text)
+    image_metadata = await _generate_cover_image_async(metadata, project)
     await _update_project_state(project, progress=65, **metadata, **image_metadata)
     await _save_event(project, "stage2_done", {})
 
@@ -203,7 +203,15 @@ async def generate_audio_logic(project_id: int):
     await _send(project_id, {"progress": 70, "message": _("Recording narration for each page...")})
 
     page_objects = await sync_to_async(list)(project.pages.all())
-    audio_tasks = [_generate_audio_for_page(page, project) for page in page_objects]
+    
+    semaphore = asyncio.Semaphore(3)
+
+    async def generate_with_semaphore(page, project):
+        async with semaphore:
+            return await _generate_audio_for_page(page, project)
+
+    audio_tasks = [generate_with_semaphore(page, project) for page in page_objects]
+    
     audio_chunks = await asyncio.gather(*audio_tasks)
 
     await _send(project_id, {"progress": 90, "message": _("Combining narration...")})

@@ -186,14 +186,56 @@ AI_TEXT_MODEL = env("AI_TEXT_MODEL", default="gpt-4-turbo")
 AI_IMAGE_MODEL = env("AI_IMAGE_MODEL", default="dall-e-3")
 AI_AUDIO_MODEL = env("AI_AUDIO_MODEL", default="tts-1")
 
-ALL_THEMES_DATA = [
-    {"id": "space", "name": "Space Cosmic Adventures"},
-    {"id": "ocean", "name": "Ocean Underwater Tales"},
-    {"id": "jungle", "name": "Jungle Wild Explorations"},
-    {"id": "city", "name": "City Urban Adventures"},
-    {"id": "fantasy", "name": "Fantasy Magical Worlds"},
-    {"id": "folktale", "name": "Folktale Classic Stories"},
-]
+ALL_THEMES_DATA = {
+    "space": {
+        "name": "Space Cosmic Adventures",
+        "choices": [
+            {"id": "space_1", "name": "Ride a Shooting Star", "description": "Surf through the galaxy and visit a planet made of ice cream.", "image_file": "ride_a_shooting_star.png"},
+            {"id": "space_2", "name": "Befriend a Lost Alien", "description": "Help a friendly, four-armed alien fix his spaceship to get home.", "image_file": "befriend_a_lost_alien.png"},
+            {"id": "space_3", "name": "Explore a Moon Base", "description": "Bounce in low gravity and discover a garden of glowing moon-flowers.", "image_file": "explore_a_moon_base.png"},
+        ]
+    },
+    "ocean": {
+        "name": "Ocean Underwater Tales",
+        "choices": [
+            {"id": "ocean_1", "name": "Find a Pirate's Treasure", "description": "Follow an old map to a sunken ship guarded by a friendly octopus.", "image_file": "find_a_pirate's_treasure.png"},
+            {"id": "ocean_2", "name": "Race a Sea Turtle", "description": "Join a wise old sea turtle on a journey to find the ocean's oldest secret.", "image_file": "race_a_sea_turtle.png"},
+            {"id": "ocean_3", "name": "Visit a Mermaid City", "description": "Swim through glowing coral castles and attend a royal mermaid ball.", "image_file": "visit_a_mermaid_city.png"},
+        ]
+    },
+    "jungle": {
+        "name": "Jungle Wild Explorations",
+        "choices": [
+            {"id": "jungle_1", "name": "Discover a Hidden Temple", "description": "Solve ancient puzzles to find what the cheeky monkeys are guarding.", "image_file": "discover_a_hidden_temple.png"},
+            {"id": "jungle_2", "name": "Swing with the Monkeys", "description": "Learn to swing from vine to vine with a playful monkey family.", "image_file": "swing_with_the_monkeys.png"},
+            {"id": "jungle_3", "name": "Follow a Glowing Butterfly", "description": "Let a magical butterfly lead you to a secret waterfall.", "image_file": "follow_a_glowing_butterfly.png"},
+        ]
+    },
+    "city": {
+        "name": "City Urban Adventures",
+        "choices": [
+            {"id": "city_1", "name": "Drive a Magical Bus", "description": "Become the driver of a special bus that can fly over skyscrapers.", "image_file": "drive_a_magical_bus.png"},
+            {"id": "city_2", "name": "Solve a Museum Mystery", "description": "Find out who's been moving the dinosaur bones at night.", "image_file": "solve_a_museum_mystery.png"},
+            {"id": "city_3", "name": "Help in a Rooftop Garden", "description": "Meet talking pigeons and grow glowing flowers high above the streets.", "image_file": "help_in_a_rooftop_garden.png"},
+        ]
+    },
+    "fantasy": {
+        "name": "Fantasy Magical Worlds",
+        "choices": [
+            {"id": "fantasy_1", "name": "Hatch a Dragon Egg", "description": "Care for a mysterious, sparkling egg until your very own baby dragon emerges.", "image_file": "hatch_a_dragon_egg.png"},
+            {"id": "fantasy_2", "name": "Enter the Magical Castle", "description": "Explore mysterious rooms and meet the friendly dragon guardian.", "image_file": "enter_the_magical_castle.png"},
+            {"id": "fantasy_3", "name": "Mix a Potion with a Wizard", "description": "Help a clumsy wizard find the right ingredients for a floating spell.", "image_file": "mix_a_potion_with_a_wizard.png"},
+        ]
+    },
+    "folktale": {
+        "name": "Folktale Classic Stories",
+        "choices": [
+            {"id": "folktale_1", "name": "Help the Three Bears", "description": "Assist Mama, Papa, and Baby Bear in preparing for a surprise forest festival.", "image_file": "help_the_three_bears.png"},
+            {"id": "folktale_2", "name": "Outsmart a Gentle Giant", "description": "Use your cleverness to solve a giant's riddles and cross his bridge.", "image_file": "outsmart_a_gentle_giant.png"},
+            {"id": "folktale_3", "name": "Visit the Gingerbread House", "description": "Follow a candy trail to a delicious house in the woods for a tea party.", "image_file": "visit_the_gingerbread_house.png"},
+        ]
+    },
+}
 
 ALL_ART_STYLES_DATA = [
     {"id": "watercolor", "name": "Watercolor Storybook", "description": "soft, dreamy illustrations with flowing colors", "image_file": "style_watercolor.png"},
@@ -203,18 +245,14 @@ ALL_ART_STYLES_DATA = [
     {"id": "african_folktale", "name": "African Folktale", "description": "traditional cultural art with rich patterns", "image_file": "style_folktale.png"},
     {"id": "clay", "name": "Clay", "description": "stop-motion clay figures with texture", "image_file": "style_clay.png"},
 ]
-
 TIER_1_ART_STYLE_IDS = ["watercolor", "pixar", "anime", "papercut", "african_folktale"]
 
-THEME_ID_TO_NAME_MAP = {item['id']: item['name'] for item in ALL_THEMES_DATA}
+THEME_ID_TO_NAME_MAP = {theme_id: theme_data['name'] for theme_id, theme_data in ALL_THEMES_DATA.items()}
 ART_STYLE_ID_TO_NAME_MAP = {item['id']: item['name'] for item in ALL_ART_STYLES_DATA}
 
 TIER_1_NARRATOR_VOICES = [
-    'EXAVITQu4vr4xnSDxMaL',  
-    'IKne3meq5aSn9XLyUdCD',  
-    'onwK4e9ZLuTAKqWW03F9',  
+    'EXAVITQu4vr4xnSDxMaL',  'IKne3meq5aSn9XLyUdCD',  'onwK4e9ZLuTAKqWW03F9',  
 ]
-
 ALL_NARRATOR_VOICES = [
     '2EiwWnXFnvU5JabPnv8n', 'CwhRBWXzGAHq8TQ4Fs17', 'EXAVITQu4vr4xnSDxMaL',
     'FGY2WhTYpPnrIDTdsKH5', 'IKne3meq5aSn9XLyUdCD', 'JBFqnCBsd6RMkjVDRZzb',
@@ -224,7 +262,6 @@ ALL_NARRATOR_VOICES = [
     'iP95p4xoKVk53GoZ742B', 'nPczCjzI2devNBz1zQrb', 'onwK4e9ZLuTAKqWW03F9',
     'pFZP5JQG7iQjIQuC4Bku', 'pqHfZKP75CvOlQylNhV4'
 ]
-
 ELEVENLABS_VOICE_MAP = {
     '2EiwWnXFnvU5JabPnv8n': 'Clyde', 'CwhRBWXzGAHq8TQ4Fs17': 'Roger',
     'EXAVITQu4vr4xnSDxMaL': 'Sarah', 'FGY2WhTYpPnrIDTdsKH5': 'Laura',

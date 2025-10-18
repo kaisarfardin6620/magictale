@@ -12,7 +12,7 @@ from django.contrib.staticfiles.storage import staticfiles_storage
 from django.utils.translation import gettext_lazy as _
 from rest_framework.throttling import ScopedRateThrottle
 from django.core.cache import cache
-from .tasks import start_story_generation_pipeline, generate_pdf_task
+from .tasks import start_story_generation_pipeline, generate_pdf_task, start_story_remix_pipeline
 from .models import StoryProject
 from .serializers import (
     StoryProjectCreateSerializer,
@@ -38,7 +38,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         return queryset
 
     def get_throttles(self):
-        if self.action == 'create':
+        if self.action == 'create' or self.action == 'remix':
             self.throttle_scope = 'story_creation'
         return super().get_throttles()
 
@@ -76,6 +76,50 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(latest_story)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['get'])
+    def choices(self, request, pk=None):
+        project = self.get_object()
+        theme_id = project.theme
+        
+        theme_data = settings.ALL_THEMES_DATA.get(theme_id)
+        if not theme_data:
+            raise NotFound(_("Choices for this story's theme could not be found."))
+            
+        choices_with_urls = []
+        for choice in theme_data['choices']:
+            choices_with_urls.append({
+                "id": choice['id'],
+                "name": choice['name'],
+                "description": choice['description'],
+                "image_url": request.build_absolute_uri(
+                    staticfiles_storage.url(f"images/themes/{choice['image_file']}")
+                )
+            })
+        return Response(choices_with_urls)
+    @action(detail=True, methods=['post'])
+    def remix(self, request, pk=None):
+        project = self.get_object()
+        
+        if project.status != StoryProject.Status.DONE:
+            raise ValidationError(_("This story cannot be remixed until it is complete."))
+            
+        choice_id = request.data.get('choice_id')
+        if not choice_id:
+            raise ValidationError({"choice_id": "This field is required."})
+
+        if not any(choice['id'] == choice_id for theme in settings.ALL_THEMES_DATA.values() for choice in theme['choices']):
+            raise ValidationError({"choice_id": "The provided choice is invalid."})
+
+        project.status = StoryProject.Status.RUNNING
+        project.progress = 1
+        project.error = ""
+        project.save(update_fields=["status", "progress", "error"])
+        
+        transaction.on_commit(lambda: start_story_remix_pipeline(project.id, choice_id))
+        
+        serializer = self.get_serializer(project)
+        return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
@@ -129,7 +173,7 @@ class GenerationOptionsView(APIView):
         except (AttributeError, user.subscription.RelatedObjectDoesNotExist):
             plan_key = "default"
         
-        cache_key = f"generation_options_{plan_key}"
+        cache_key = f"generation_options_v2_{plan_key}"
         cached_data = cache.get(cache_key)
 
         if cached_data:
@@ -141,12 +185,17 @@ class GenerationOptionsView(APIView):
             subscription = type('obj', (object,), {'plan': 'creator', 'status': 'trialing'})()
 
         is_master_plan = subscription.plan == 'master' and subscription.status == 'active'
-        themes = settings.ALL_THEMES_DATA
-        allowed_style_ids = list(settings.ART_STYLE_ID_TO_NAME_MAP.keys()) if is_master_plan else settings.TIER_1_ART_STYLE_IDS
-        art_styles = []
+
+        themes_response = [
+            {"id": theme_id, "name": theme_data["name"]}
+            for theme_id, theme_data in settings.ALL_THEMES_DATA.items()
+        ]
+        
+        allowed_style_ids = list(item['id'] for item in settings.ALL_ART_STYLES_DATA) if is_master_plan else settings.TIER_1_ART_STYLE_IDS
+        art_styles_response = []
         for style in settings.ALL_ART_STYLES_DATA:
             if style['id'] in allowed_style_ids:
-                art_styles.append({
+                art_styles_response.append({
                     "id": style['id'],
                     "name": style['name'],
                     "description": style['description'],
@@ -162,8 +211,8 @@ class GenerationOptionsView(APIView):
         ]
         
         response_data = {
-            "themes": themes,
-            "art_styles": art_styles,
+            "themes": themes_response,
+            "art_styles": art_styles_response,
             "narrator_voices": voices,
         }
 
