@@ -208,6 +208,7 @@ async def generate_audio_logic(project_id: int):
 
     async def generate_with_semaphore(page, project):
         async with semaphore:
+            await asyncio.sleep(3) 
             return await _generate_audio_for_page(page, project)
 
     audio_tasks = [generate_with_semaphore(page, project) for page in page_objects]
