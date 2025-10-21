@@ -31,25 +31,30 @@ class StoryProjectCreateSerializer(serializers.ModelSerializer):
             subscription = type('obj', (object,), {'plan': 'trial', 'status': 'trialing'})()
 
         is_master_plan = subscription.plan == 'master' and subscription.status == 'active'
+        if is_master_plan:
+            return data
 
-        allowed_theme_ids = settings.THEME_ID_TO_NAME_MAP.keys()
-        allowed_style_ids = settings.ART_STYLE_ID_TO_NAME_MAP.keys() if is_master_plan else settings.TIER_1_ART_STYLE_IDS
-        allowed_voices = settings.ALL_NARRATOR_VOICES if is_master_plan else settings.TIER_1_NARRATOR_VOICES
+        profile = user.profile
+        used_styles = set(profile.used_art_styles.split(',') if profile.used_art_styles else [])
+        used_voices = set(profile.used_narrator_voices.split(',') if profile.used_narrator_voices else [])
 
         submitted_style = data.get('art_style')
-        if submitted_style and submitted_style not in allowed_style_ids:
-            raise serializers.ValidationError({
-                'art_style': f"The '{submitted_style}' art style is not available for your current plan."
-            })
-            
         submitted_voice = data.get('voice')
-        if submitted_voice and submitted_voice not in allowed_voices:
-            raise serializers.ValidationError({
-                'voice': f"The selected narrator voice is not available for your current plan."
-            })
-            
+
+        if submitted_style and submitted_style not in used_styles:
+            if len(used_styles) >= 5:
+                raise serializers.ValidationError({
+                    'art_style': "You have already used your 5 available art styles for this trial period. Please upgrade to unlock all styles."
+                })
+
+        if submitted_voice and submitted_voice not in used_voices:
+            if len(used_voices) >= 3:
+                raise serializers.ValidationError({
+                    'voice': "You have already used your 3 available narrator voices for this trial period. Please upgrade to unlock all voices."
+                })
+        
         submitted_theme = data.get('theme')
-        if submitted_theme and submitted_theme not in allowed_theme_ids:
+        if submitted_theme and submitted_theme not in settings.THEME_ID_TO_NAME_MAP:
              raise serializers.ValidationError({
                 'theme': f"The theme '{submitted_theme}' is not a valid option."
             })

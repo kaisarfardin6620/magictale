@@ -23,8 +23,9 @@ from pathlib import Path
 import time
 import requests
 import io
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import asyncio
+from authentication.models import UserProfile
 
 RETRYABLE_EXCEPTIONS = (
     openai.APITimeoutError,
@@ -37,6 +38,37 @@ def on_pipeline_failure(self, exc, task_id, args, kwargs, einfo):
     project_id = args[0]
     print(f"PIPELINE FAILED: Task {self.name} for project {project_id} failed permanently. Reason: {exc}")
     async_to_sync(handle_generation_failure)(project_id, exc)
+
+@shared_task
+def update_user_usage_task(project_id: int):
+    try:
+        project = StoryProject.objects.select_related('user__profile', 'user__subscription').get(id=project_id)
+        profile = project.user.profile
+        subscription = project.user.subscription
+
+        if not (subscription.plan == 'master' and subscription.status == 'active'):
+            print(f"Updating usage stats for user {project.user.id}")
+            
+            used_styles = set(profile.used_art_styles.split(',') if profile.used_art_styles else [])
+            if project.art_style not in used_styles:
+                used_styles.add(project.art_style)
+                profile.used_art_styles = ",".join(filter(None, used_styles))
+
+            used_voices = set(profile.used_narrator_voices.split(',') if profile.used_narrator_voices else [])
+            if project.voice not in used_voices:
+                used_voices.add(project.voice)
+                profile.used_narrator_voices = ",".join(filter(None, used_voices))
+            
+            profile.save(update_fields=['used_art_styles', 'used_narrator_voices'])
+            print(f"Successfully updated usage stats for user {project.user.id}")
+        else:
+            print(f"Skipping usage update for master user {project.user.id}")
+
+    except StoryProject.DoesNotExist:
+        print(f"Could not update usage: StoryProject with id={project_id} not found.")
+    except Exception as e:
+        print(f"An error occurred while updating user usage for project {project_id}: {e}")
+
 
 @shared_task(
     bind=True,
@@ -51,7 +83,6 @@ def generate_text_task(self, project_id: int):
     print(f"Finished STAGE 1: TEXT for project {project_id}")
     return project_id 
 
-# vvv --- THIS FUNCTION NOW CORRECTLY COMBINES THE STORY PARTS --- vvv
 async def remix_text_logic(project_id: int, choice_id: str):
     project = await _reload_project(project_id)
     if not project or project.status != 'running': return
@@ -87,20 +118,15 @@ async def remix_text_logic(project_id: int, choice_id: str):
     new_second_half = text_resp.choices[0].message.content.strip() if text_resp.choices else ""
     if not new_second_half: raise ValueError("AI returned an empty remixed story.")
     
-    # --- THIS IS THE CRITICAL FIX ---
-    # Combine the original beginning with the new ending
     new_full_text = first_half_text + "\n\n" + new_second_half
-    # --------------------------------
 
     await _update_project_state(project, progress=30, text=new_full_text)
     
     from .engine import _split_text_into_pages, _delete_pages, _create_page
     page_texts = _split_text_into_pages(new_full_text)
     await _delete_pages(project)
-    # Correctly use asyncio.gather for creating pages
     await asyncio.gather(*[_create_page(project, i, text) for i, text in enumerate(page_texts, start=1)])
     await _save_event(project, "remix_done", {"pages_created": len(page_texts)})
-# ^^^ --- END OF CORRECTED FUNCTION --- ^^^
 
 
 @shared_task(
@@ -115,40 +141,63 @@ def remix_text_task(self, project_id: int, choice_id: str):
     print(f"Finished REMIX: TEXT for project {project_id}")
     return project_id
 
-@shared_task(
-    bind=True,
-    autoretry_for=RETRYABLE_EXCEPTIONS,
-    retry_kwargs={'max_retries': 3, 'countdown': 60},
-    on_failure=on_pipeline_failure
-)
-def generate_metadata_and_cover_task(self, project_id: int):
-    from .engine import generate_metadata_and_cover_logic
-    print(f"Starting STAGE 2: METADATA/COVER for project {project_id}")
-    async_to_sync(generate_metadata_and_cover_logic)(project_id)
-    optimize_cover_image_task.delay(project_id)
-    print(f"Finished STAGE 2: METADATA/COVER for project {project_id}")
-    return project_id
+@shared_task
+def watermark_cover_image_task(project_id: int):
+    print(f"Checking for watermarking for project {project_id}")
+    try:
+        project = StoryProject.objects.select_related('user__subscription').get(id=project_id)
+        subscription = project.user.subscription
 
-@shared_task(
-    bind=True,
-    autoretry_for=RETRYABLE_EXCEPTIONS,
-    retry_kwargs={'max_retries': 3, 'countdown': 120}, 
-    on_failure=on_pipeline_failure
-)
-def generate_audio_task(self, project_id: int):
-    print(f"Starting STAGE 3: AUDIO for project {project_id}")
-    async_to_sync(generate_audio_logic)(project_id)
-    print(f"Finished STAGE 3: AUDIO for project {project_id}")
-    async_to_sync(_cleanup_audio_chunks)(project_id)
-    project = async_to_sync(_reload_project)(project_id)
-    if project and project.started_at and project.finished_at:
-        duration = project.finished_at - project.started_at
-        total_seconds = duration.total_seconds()
-        print(f"Project {project_id} generation pipeline complete. Total time: {total_seconds:.2f} seconds.")
-    else:
-        print(f"Project {project_id} generation pipeline complete.")
+        if not (subscription.plan == 'creator' and subscription.status == 'active'):
+            print(f"Skipping watermark for project {project_id} (User is not Tier 1).")
+            return
+
+        if not project.cover_image_url:
+            print(f"No cover image URL for project {project_id}. Skipping watermark.")
+            return
+
+        print(f"Applying watermark for project {project_id} (User is Tier 1).")
+        response = requests.get(project.cover_image_url)
+        response.raise_for_status()
         
-    return project_id
+        image_file = io.BytesIO(response.content)
+        img = Image.open(image_file).convert("RGBA")
+        
+        txt_overlay = Image.new('RGBA', img.size, (255, 255, 255, 0))
+        draw = ImageDraw.Draw(txt_overlay)
+        
+        text = "MagicTale AI"
+        try:
+            font = ImageFont.truetype("static/fonts/arial.ttf", 40)
+        except IOError:
+            font = ImageFont.load_default()
+        
+        text_bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
+        position = (img.width - text_width - 20, img.height - text_height - 20)
+        
+        draw.text(position, text, font=font, fill=(255, 255, 255, 128))
+        
+        watermarked_img = Image.alpha_composite(img, txt_overlay)
+        
+        buffer = io.BytesIO()
+        watermarked_img.convert('RGB').save(buffer, format='JPEG', quality=90)
+        buffer.seek(0)
+        
+        from urllib.parse import urlparse
+        file_path = urlparse(project.cover_image_url).path.lstrip('/')
+        
+        new_file = ContentFile(buffer.read())
+        default_storage.delete(file_path)
+        default_storage.save(file_path, new_file)
+        
+        print(f"Successfully watermarked cover image for project {project_id}")
+
+    except StoryProject.DoesNotExist:
+        print(f"Error watermarking image: StoryProject with id={project_id} not found.")
+    except Exception as e:
+        print(f"An unexpected error occurred during watermarking for project {project_id}: {e}")
 
 @shared_task
 def optimize_cover_image_task(project_id: int):
@@ -164,14 +213,47 @@ def optimize_cover_image_task(project_id: int):
         buffer = io.BytesIO()
         img.convert('RGB').save(buffer, format='JPEG', quality=85, optimize=True)
         buffer.seek(0)
-        optimized_file_path = f'images/covers/optimized/story_{project.id}_cover.jpg'
+        
+        from urllib.parse import urlparse
+        original_path = urlparse(project.cover_image_url).path.lstrip('/')
+        
         new_file = ContentFile(buffer.read())
-        saved_path = default_storage.save(optimized_file_path, new_file)
-        project.cover_image_url = default_storage.url(saved_path)
-        project.save(update_fields=['cover_image_url'])
-        print(f"Successfully optimized and updated cover image for project {project_id}")
+        default_storage.delete(original_path)
+        default_storage.save(original_path, new_file)
+        
+        print(f"Successfully optimized image for project {project_id}")
     except Exception as e:
         print(f"An unexpected error occurred during image optimization for project {project_id}: {e}")
+
+@shared_task(bind=True, autoretry_for=RETRYABLE_EXCEPTIONS, retry_kwargs={'max_retries': 3, 'countdown': 60}, on_failure=on_pipeline_failure)
+def generate_metadata_and_cover_task(self, project_id: int):
+    from .engine import generate_metadata_and_cover_logic
+    print(f"Starting STAGE 2: METADATA/COVER for project {project_id}")
+    async_to_sync(generate_metadata_and_cover_logic)(project_id)
+    print(f"Finished STAGE 2: METADATA/COVER for project {project_id}")
+    chain(optimize_cover_image_task.s(project_id), watermark_cover_image_task.s()).apply_async()
+    
+    return project_id
+
+@shared_task(bind=True, autoretry_for=RETRYABLE_EXCEPTIONS, retry_kwargs={'max_retries': 3, 'countdown': 120}, on_failure=on_pipeline_failure)
+def generate_audio_task(self, project_id: int):
+    print(f"Starting STAGE 3: AUDIO for project {project_id}")
+    async_to_sync(generate_audio_logic)(project_id)
+    print(f"Finished STAGE 3: AUDIO for project {project_id}")
+    async_to_sync(_cleanup_audio_chunks)(project_id)
+    
+    project = async_to_sync(_reload_project)(project_id)
+    if project and project.started_at and project.finished_at:
+        duration = project.finished_at - project.started_at
+        total_seconds = duration.total_seconds()
+        print(f"Project {project_id} generation pipeline complete. Total time: {total_seconds:.2f} seconds.")
+        
+        update_user_usage_task.delay(project_id)
+        
+    else:
+        print(f"Project {project_id} generation pipeline complete.")
+        
+    return project_id
 
 def start_story_generation_pipeline(project_id: int):
     pipeline = chain(
@@ -183,7 +265,6 @@ def start_story_generation_pipeline(project_id: int):
     pipeline.apply_async()
 
 def start_story_remix_pipeline(project_id: int, choice_id: str):
-    """A shorter pipeline that only remixes text and regenerates audio."""
     pipeline = chain(
         remix_text_task.s(project_id, choice_id),
         generate_audio_task.s()

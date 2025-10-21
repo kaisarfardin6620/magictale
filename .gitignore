@@ -8,3 +8,4 @@ postman.json
 __pycache__
 __init__.py
 media
+migrations

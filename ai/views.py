@@ -10,7 +10,6 @@ from rest_framework.views import APIView
 from django.conf import settings
 from django.contrib.staticfiles.storage import staticfiles_storage
 from django.utils.translation import gettext_lazy as _
-from rest_framework.throttling import ScopedRateThrottle
 from django.core.cache import cache
 from .tasks import start_story_generation_pipeline, generate_pdf_task, start_story_remix_pipeline
 from .models import StoryProject
@@ -19,12 +18,13 @@ from .serializers import (
     StoryProjectDetailSerializer,
 )
 from authentication.permissions import HasActiveSubscription, IsOwner, IsStoryMaster
+from .throttling import SubscriptionBasedThrottle
 
 class StoryProjectViewSet(viewsets.ModelViewSet):
     queryset = StoryProject.objects.all() 
     serializer_class = StoryProjectDetailSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwner, HasActiveSubscription]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [SubscriptionBasedThrottle]
 
     def get_queryset(self):
         queryset = (
@@ -36,11 +36,6 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         if self.action == 'list':
             return queryset.filter(is_saved=True)
         return queryset
-
-    def get_throttles(self):
-        if self.action == 'create' or self.action == 'remix':
-            self.throttle_scope = 'story_creation'
-        return super().get_throttles()
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -97,16 +92,17 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
                 )
             })
         return Response(choices_with_urls)
-    @action(detail=True, methods=['post'])
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated, IsOwner, IsStoryMaster])
     def remix(self, request, pk=None):
         project = self.get_object()
         
-        if project.status != StoryProject.Status.DONE:
-            raise ValidationError(_("This story cannot be remixed until it is complete."))
+        if project.status not in [StoryProject.Status.DONE, StoryProject.Status.CANCELED]:
+            raise ValidationError(_("This story cannot be remixed while it is still in progress."))
             
         choice_id = request.data.get('choice_id')
         if not choice_id:
-            raise ValidationError({"choice_id": "This field is required."})
+            raise ValidationError({"choice_id": "A choice_id must be provided."})
 
         if not any(choice['id'] == choice_id for theme in settings.ALL_THEMES_DATA.values() for choice in theme['choices']):
             raise ValidationError({"choice_id": "The provided choice is invalid."})
@@ -114,7 +110,8 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         project.status = StoryProject.Status.RUNNING
         project.progress = 1
         project.error = ""
-        project.save(update_fields=["status", "progress", "error"])
+        project.finished_at = None
+        project.save(update_fields=["status", "progress", "error", "finished_at"])
         
         transaction.on_commit(lambda: start_story_remix_pipeline(project.id, choice_id))
         
@@ -166,54 +163,37 @@ class GenerationOptionsView(APIView):
     permission_classes = [permissions.IsAuthenticated, HasActiveSubscription]
 
     def get(self, request):
-        user = request.user
-        
-        try:
-            plan_key = f"{user.subscription.plan}_{user.subscription.status}"
-        except (AttributeError, user.subscription.RelatedObjectDoesNotExist):
-            plan_key = "default"
-        
-        cache_key = f"generation_options_v2_{plan_key}"
+        cache_key = "generation_options_all_v2" # Use a single, versioned cache key
         cached_data = cache.get(cache_key)
 
         if cached_data:
             return Response(cached_data, status=status.HTTP_200_OK)
-
-        try:
-            subscription = user.subscription
-        except (AttributeError, user.subscription.RelatedObjectDoesNotExist):
-            subscription = type('obj', (object,), {'plan': 'creator', 'status': 'trialing'})()
-
-        is_master_plan = subscription.plan == 'master' and subscription.status == 'active'
 
         themes_response = [
             {"id": theme_id, "name": theme_data["name"]}
             for theme_id, theme_data in settings.ALL_THEMES_DATA.items()
         ]
         
-        allowed_style_ids = list(item['id'] for item in settings.ALL_ART_STYLES_DATA) if is_master_plan else settings.TIER_1_ART_STYLE_IDS
         art_styles_response = []
         for style in settings.ALL_ART_STYLES_DATA:
-            if style['id'] in allowed_style_ids:
-                art_styles_response.append({
-                    "id": style['id'],
-                    "name": style['name'],
-                    "description": style['description'],
-                    "image_url": request.build_absolute_uri(
-                        staticfiles_storage.url(f"images/art_styles/{style['image_file']}")
-                    )
-                })
+            art_styles_response.append({
+                "id": style['id'],
+                "name": style['name'],
+                "description": style['description'],
+                "image_url": request.build_absolute_uri(
+                    staticfiles_storage.url(f"images/art_styles/{style['image_file']}")
+                )
+            })
 
-        allowed_voice_ids = settings.ALL_NARRATOR_VOICES if is_master_plan else settings.TIER_1_NARRATOR_VOICES
-        voices = [
-            {"id": voice_id, "name": settings.ELEVENLABS_VOICE_MAP.get(voice_id, "Unknown")}
-            for voice_id in allowed_voice_ids
+        voices_response = [
+            {"id": voice_id, "name": name}
+            for voice_id, name in settings.ELEVENLABS_VOICE_MAP.items()
         ]
         
         response_data = {
             "themes": themes_response,
             "art_styles": art_styles_response,
-            "narrator_voices": voices,
+            "narrator_voices": voices_response,
         }
 
         cache.set(cache_key, response_data, timeout=3600)

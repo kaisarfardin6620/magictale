@@ -26,6 +26,14 @@ class UserProfile(models.Model):
     allow_push_notifications = models.BooleanField(default=True)
     parental_consent = models.BooleanField(default=False)
     accepted_terms = models.BooleanField(default=False)
+    used_art_styles = models.TextField(
+        blank=True, default="",
+        help_text="Comma-separated list of art style IDs used by the user during their trial."
+    )
+    used_narrator_voices = models.TextField(
+        blank=True, default="",
+        help_text="Comma-separated list of voice IDs used by the user during their trial."
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -54,7 +62,6 @@ class AuthToken(models.Model):
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='auth_tokens')
     token_type = models.CharField(max_length=20, choices=TOKEN_TYPES)
-    new_email = models.EmailField(blank=True, null=True)  # For email change requests
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
     is_used = models.BooleanField(default=False)
