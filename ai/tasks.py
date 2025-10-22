@@ -71,7 +71,12 @@ def update_user_usage_task(project_id: int):
         print(f"An error occurred while updating user usage for project {project_id}: {e}")
 
 
-@shared_task(bind=True, autoretry_for=RETRYABLE_EXCEPTIONS, retry_kwargs={'max_retries': 3, 'countdown': 60}, on_failure=on_pipeline_failure)
+@shared_task(
+    bind=True,
+    autoretry_for=RETRYABLE_EXCEPTIONS,
+    retry_kwargs={'max_retries': 3, 'countdown': 60},
+    on_failure=on_pipeline_failure
+)
 def generate_text_task(self, project_id: int):
     print(f"Starting STAGE 1: TEXT for project {project_id}")
     async_to_sync(generate_text_logic)(project_id)
@@ -79,9 +84,62 @@ def generate_text_task(self, project_id: int):
     return project_id 
 
 async def remix_text_logic(project_id: int, choice_id: str):
+    project = await _reload_project(project_id)
+    if not project or project.status != 'running': return
 
-@shared_task(bind=True, autoretry_for=RETRYABLE_EXCEPTIONS, retry_kwargs={'max_retries': 3, 'countdown': 60}, on_failure=on_pipeline_failure)
+    await _save_event(project, "remix_start", {"choice_id": choice_id})
+    await _send(project_id, {"status": "running", "progress": 5, "message": _("Changing the story's path...")})
+
+    choice_description = "A new adventure."
+    for theme_data in settings.ALL_THEMES_DATA.values():
+        for choice in theme_data['choices']:
+            if choice['id'] == choice_id:
+                choice_description = choice['description']
+                break
+
+    prompt_dir = Path(__file__).parent / "prompts"
+    remix_prompt_template = (prompt_dir / "remix_prompt.txt").read_text()
+    
+    original_paragraphs = project.text.split('\n\n')
+    first_half_text = "\n\n".join(original_paragraphs[:len(original_paragraphs)//2])
+
+    remix_prompt = remix_prompt_template.format(
+        original_story_beginning=first_half_text,
+        choice_description=choice_description
+    )
+    
+    text_resp = await openai_client.chat.completions.create(
+        model=project.model_used or "gpt-4-turbo",
+        messages=[{"role": "user", "content": remix_prompt}],
+        temperature=0.8,
+        timeout=90.0
+    )
+    
+    new_second_half = text_resp.choices[0].message.content.strip() if text_resp.choices else ""
+    if not new_second_half: raise ValueError("AI returned an empty remixed story.")
+    
+    new_full_text = first_half_text + "\n\n" + new_second_half
+
+    await _update_project_state(project, progress=30, text=new_full_text)
+    
+    from .engine import _split_text_into_pages, _delete_pages, _create_page
+    page_texts = _split_text_into_pages(new_full_text)
+    await _delete_pages(project)
+    await asyncio.gather(*[_create_page(project, i, text) for i, text in enumerate(page_texts, start=1)])
+    await _save_event(project, "remix_done", {"pages_created": len(page_texts)})
+
+
+@shared_task(
+    bind=True,
+    autoretry_for=RETRYABLE_EXCEPTIONS,
+    retry_kwargs={'max_retries': 3, 'countdown': 60},
+    on_failure=on_pipeline_failure
+)
 def remix_text_task(self, project_id: int, choice_id: str):
+    print(f"Starting REMIX: TEXT for project {project_id}")
+    async_to_sync(remix_text_logic)(project_id, choice_id)
+    print(f"Finished REMIX: TEXT for project {project_id}")
+    return project_id
 
 @shared_task
 def watermark_cover_image_task(project_id: int):
@@ -141,7 +199,7 @@ def watermark_cover_image_task(project_id: int):
     except Exception as e:
         print(f"An unexpected error occurred during watermarking for project {project_id}: {e}")
         
-    return project_id 
+    return project_id
 
 @shared_task
 def optimize_cover_image_task(project_id: int):
@@ -149,7 +207,7 @@ def optimize_cover_image_task(project_id: int):
     try:
         project = StoryProject.objects.get(id=project_id)
         if not project.cover_image_url:
-            return project_id 
+            return project_id
             
         response = requests.get(project.cover_image_url)
         response.raise_for_status()
@@ -178,6 +236,7 @@ def generate_metadata_and_cover_task(self, project_id: int):
     print(f"Starting STAGE 2: METADATA/COVER for project {project_id}")
     async_to_sync(generate_metadata_and_cover_logic)(project_id)
     print(f"Finished STAGE 2: METADATA/COVER for project {project_id}")
+    
     chain(optimize_cover_image_task.s(), watermark_cover_image_task.s()).apply_async(args=[project_id])
     
     return project_id
