@@ -40,6 +40,7 @@ async def api_with_retry(async_func, *args, max_retries=3, **kwargs):
             logger.warning(f"API call failed, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
             await asyncio.sleep(wait_time)
 
+
 @sync_to_async
 def _reload_project(project_id: int) -> StoryProject | None:
     return StoryProject.objects.prefetch_related('pages').filter(pk=project_id).first()
@@ -121,16 +122,19 @@ def _build_cover_image_prompt(synopsis: str, project: StoryProject) -> str:
     art_style_name = settings.ART_STYLE_ID_TO_NAME_MAP.get(project.art_style, project.art_style)
     return (prompt_dir / "cover_image_prompt.txt").read_text().format(art_style=art_style_name, prompt_subject=prompt_subject)
 
+# vvv --- THIS IS THE FINAL, CORRECTED VERSION OF THE FUNCTION --- vvv
 async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
     try:
-        voice_id = project.voice or "IKne3meq5aSn9XLyUdCD"
+        voice_id = project.voice or "IKne3meq5aSn9XLyUdCD" # Default to a valid ID
         
+        # The call to the client's `convert` method MUST be awaited.
         audio_stream = await elevenlabs_client.text_to_speech.convert(
             voice_id=voice_id,
             text=page.text,
             model_id="eleven_multilingual_v2",
         )
         
+        # The `b"".join(...)` is the correct way to consume the stream.
         audio_content = b"".join([chunk async for chunk in audio_stream])
         
         chunk_file_path = f"audio/chunks/story_{project.id}_page_{page.index}.mp3"
@@ -141,6 +145,7 @@ async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
     except Exception as e:
         logger.error(f"Failed to generate ElevenLabs audio for page {page.index} (Project {project.id}): {e}")
         return None
+# ^^^ --- END OF CORRECTED FUNCTION --- ^^^
 
 async def _cleanup_audio_chunks(project_id: int):
     try:
