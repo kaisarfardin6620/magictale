@@ -4,7 +4,7 @@ import json
 import io
 from pathlib import Path
 from django.utils import timezone
-from asgiref.sync import async_to_async
+from asgiref.sync import sync_to_async
 from channels.layers import get_channel_layer
 from django.conf import settings
 from openai import AsyncOpenAI, RateLimitError, APIError
