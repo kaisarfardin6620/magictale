@@ -12,7 +12,7 @@ from elevenlabs.client import AsyncElevenLabs
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from pydub import AudioSegment
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import gettext as _
 import logging
 from .models import StoryProject, GenerationEvent, StoryPage
 from .prompts import get_story_prompts
@@ -98,6 +98,7 @@ async def _generate_synopsis_and_tags_async(full_text: str):
         logger.error(f"Failed to parse synopsis JSON: {e}")
         metadata = {"synopsis": _("A magical adventure awaits!"), "tags": "Adventure, Magic"}
     return metadata
+
 async def _generate_cover_image_async(metadata: dict, project: StoryProject):
     theme_name = settings.THEME_ID_TO_NAME_MAP.get(project.theme, project.theme)
     image_prompt = _build_cover_image_prompt(metadata.get("synopsis", theme_name), project)
@@ -120,11 +121,11 @@ def _build_cover_image_prompt(synopsis: str, project: StoryProject) -> str:
     art_style_name = settings.ART_STYLE_ID_TO_NAME_MAP.get(project.art_style, project.art_style)
     return (prompt_dir / "cover_image_prompt.txt").read_text().format(art_style=art_style_name, prompt_subject=prompt_subject)
 
-async def _generate_audio_for_page(page: StoryProject, project: StoryProject):
+async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
     try:
-        voice_id = project.voice or settings.TIER_1_NARRATOR_VOICES[0]
+        voice_id = project.voice or "IKne3meq5aSn9XLyUdCD"
         
-        audio_stream = elevenlabs_client.text_to_speech.convert(
+        audio_stream = await elevenlabs_client.text_to_speech.convert(
             voice_id=voice_id,
             text=page.text,
             model_id="eleven_multilingual_v2",
@@ -156,13 +157,12 @@ async def _cleanup_audio_chunks(project_id: int):
     except Exception as e:
         logger.warning(f"Failed to clean up audio chunks for project {project_id}: {e}")
 
-
 async def generate_text_logic(project_id: int):
     project = await _reload_project(project_id)
     if not project or project.status != 'running': return
 
     await _save_event(project, "stage1_start", {})
-    await _send(project_id, {"status": "running", "progress": 5, "message": _("Whispering to the story spirits...")})
+    await _send(project_id, {"status": "running", "progress": 5, "message": str(_("Whispering to the story spirits..."))})
 
     from copy import deepcopy
     temp_project = deepcopy(project)
@@ -181,17 +181,19 @@ async def generate_text_logic(project_id: int):
     await _update_project_state(project, progress=30, text=full_text)
     page_texts = _split_text_into_pages(full_text)
     await _delete_pages(project)
-    page_objects = [await _create_page(project, i, text) for i, text in enumerate(page_texts, start=1)]
-    await _save_event(project, "stage1_done", {"pages_created": len(page_objects)})
+    await asyncio.gather(*[_create_page(project, i, text) for i, text in enumerate(page_texts, start=1)])
+    await _save_event(project, "stage1_done", {"pages_created": len(page_texts)})
 
 async def generate_metadata_and_cover_logic(project_id: int):
     project = await _reload_project(project_id)
     if not project or project.status != 'running': return
 
     await _save_event(project, "stage2_start", {})
-    await _send(project_id, {"progress": 40, "message": _("Summarizing and drawing the cover...")})
+    await _send(project_id, {"progress": 40, "message": str(_("Summarizing and drawing the cover..."))})
+    
     metadata = await _generate_synopsis_and_tags_async(project.text)
     image_metadata = await _generate_cover_image_async(metadata, project)
+    
     await _update_project_state(project, progress=65, **metadata, **image_metadata)
     await _save_event(project, "stage2_done", {})
 
@@ -200,22 +202,20 @@ async def generate_audio_logic(project_id: int):
     if not project or project.status != 'running': return
 
     await _save_event(project, "stage3_start", {})
-    await _send(project_id, {"progress": 70, "message": _("Recording narration for each page...")})
+    await _send(project_id, {"progress": 70, "message": str(_("Recording narration for each page..."))})
 
     page_objects = await sync_to_async(list)(project.pages.all())
     
     semaphore = asyncio.Semaphore(3)
-
     async def generate_with_semaphore(page, project):
         async with semaphore:
-            await asyncio.sleep(3) 
+            await asyncio.sleep(1)
             return await _generate_audio_for_page(page, project)
-
     audio_tasks = [generate_with_semaphore(page, project) for page in page_objects]
     
     audio_chunks = await asyncio.gather(*audio_tasks)
 
-    await _send(project_id, {"progress": 90, "message": _("Combining narration...")})
+    await _send(project_id, {"progress": 90, "message": str(_("Combining narration..."))})
     combined_audio = None
     for chunk_io in audio_chunks:
         if chunk_io:
@@ -242,7 +242,7 @@ async def generate_audio_logic(project_id: int):
 
     await _update_project_state(project, status="done", progress=100, finished=True)
     await _save_event(project, "done", {})
-    await _send(project_id, {"status": "done", "progress": 100, "message": _("Your story is complete!")})
+    await _send(project_id, {"status": "done", "progress": 100, "message": str(_("Your story is complete!"))})
 
 async def handle_generation_failure(project_id: int, exc: Exception):
     project = await _reload_project(project_id)
@@ -252,11 +252,11 @@ async def handle_generation_failure(project_id: int, exc: Exception):
     error_type = type(exc).__name__
 
     if isinstance(exc, RateLimitError):
-        error_message = _("The AI story-making service is very busy. Please try again in a few moments.")
+        error_message = str(_("The AI story-making service is very busy. Please try again in a few moments."))
     elif isinstance(exc, APIError):
-        error_message = _("A problem occurred with the AI service. This is likely temporary, please try again.")
+        error_message = str(_("A problem occurred with the AI service. This is likely temporary, please try again."))
     else:
-        error_message = _("An unexpected error occurred while creating your story. Our team has been notified.")
+        error_message = str(_("An unexpected error occurred while creating your story. Our team has been notified."))
         logger.error(f"UNHANDLED exception for Project {project_id}: {exc}", exc_info=True)
 
     await _update_project_state(project, status="failed", error=error_message, finished=True)
