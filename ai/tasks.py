@@ -26,7 +26,7 @@ import io
 from PIL import Image, ImageDraw, ImageFont
 import asyncio
 from authentication.models import UserProfile
-
+from django.utils.translation import gettext as _
 RETRYABLE_EXCEPTIONS = (
     openai.APITimeoutError,
     openai.APIConnectionError,
