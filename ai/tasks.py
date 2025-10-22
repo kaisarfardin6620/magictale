@@ -273,7 +273,7 @@ def start_story_remix_pipeline(project_id: int, choice_id: str):
     pipeline.apply_async()
 
 @shared_task(bind=True)
-def generate_pdf_task(self, project_id: int):
+def generate_pdf_task(self, project_id: int, base_url: str):
     print(f"Starting PDF generation for project {project_id}")
     try:
         project = StoryProject.objects.get(id=project_id)
@@ -282,14 +282,15 @@ def generate_pdf_task(self, project_id: int):
         pdf_file_bytes = HTML(string=html_string).write_pdf()
         file_path = f'pdfs/story_{project.id}_{project.child_name}.pdf'
         default_storage.save(file_path, ContentFile(pdf_file_bytes))
-        pdf_url = default_storage.url(file_path)
+        relative_pdf_url = default_storage.url(file_path)
+        full_pdf_url = f"{base_url}{relative_pdf_url}"
         print(f"Successfully generated and saved PDF for project {project_id} at {pdf_url}")
         notification_payload = {
             "type": "progress", 
             "event": {
                 "status": "pdf_ready",
                 "message": _("Your story PDF is ready for download!"),
-                "pdf_url": pdf_url
+                "pdf_url": full_pdf_url
             }
         }
         async_to_sync(_send)(project_id, notification_payload)

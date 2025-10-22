@@ -151,8 +151,8 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         project = self.get_object()
         if project.status != StoryProject.Status.DONE:
             raise ValidationError(_("Cannot generate PDF. Story is not yet complete."))
-        
-        generate_pdf_task.delay(project.id)
+        base_url = request.build_absolute_uri('/')[:-1]
+        generate_pdf_task.delay(project.id, base_url)
         
         return Response(
             {"message": _("Your PDF is being generated. You will be notified when it is ready.")},
