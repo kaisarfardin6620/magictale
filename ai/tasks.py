@@ -1,7 +1,6 @@
 import openai
 from celery import shared_task, chain
 from asgiref.sync import async_to_sync
-from django.utils.translation import gettext_lazy as _
 from weasyprint import HTML
 from django.template.loader import render_to_string
 from django.core.files.storage import default_storage
@@ -237,7 +236,11 @@ def generate_metadata_and_cover_task(self, project_id: int):
     async_to_sync(generate_metadata_and_cover_logic)(project_id)
     print(f"Finished STAGE 2: METADATA/COVER for project {project_id}")
     
-    chain(optimize_cover_image_task.s(), watermark_cover_image_task.s()).apply_async(args=[project_id])
+    pipeline = chain(
+        optimize_cover_image_task.s(project_id),
+        watermark_cover_image_task.s()
+    )
+    pipeline.apply_async()
     
     return project_id
 
