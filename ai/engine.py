@@ -8,7 +8,7 @@ from asgiref.sync import sync_to_async
 from channels.layers import get_channel_layer
 from django.conf import settings
 from openai import AsyncOpenAI, RateLimitError, APIError
-from elevenlabs.client import AsyncElevenLabs
+from elevenlabs.client import ElevenLabs
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from pydub import AudioSegment
@@ -19,13 +19,11 @@ from .prompts import get_story_prompts
 from elevenlabs import Voice, VoiceSettings
 
 openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-elevenlabs_client = AsyncElevenLabs(api_key=settings.ELEVENLABS_API_KEY)
+elevenlabs_client = ElevenLabs(api_key=settings.ELEVENLABS_API_KEY)
 
 logger = logging.getLogger(__name__)
 
-LENGTH_TO_TOKENS = {
-    "short": 4000, "medium": 7000, "long": 10000,
-}
+LENGTH_TO_TOKENS = { "short": 4000, "medium": 7000, "long": 10000, }
 DEFAULT_TEXT_MODEL = getattr(settings, "AI_TEXT_MODEL", "gpt-4-turbo")
 
 async def api_with_retry(async_func, *args, max_retries=3, **kwargs):
@@ -122,20 +120,21 @@ def _build_cover_image_prompt(synopsis: str, project: StoryProject) -> str:
     art_style_name = settings.ART_STYLE_ID_TO_NAME_MAP.get(project.art_style, project.art_style)
     return (prompt_dir / "cover_image_prompt.txt").read_text().format(art_style=art_style_name, prompt_subject=prompt_subject)
 
-# vvv --- THIS IS THE FINAL, CORRECTED VERSION OF THE FUNCTION --- vvv
 async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
     try:
-        voice_id = project.voice or "IKne3meq5aSn9XLyUdCD" # Default to a valid ID
+        voice_id = project.voice or "IKne3meq5aSn9XLyUdCD"
         
-        # The call to the client's `convert` method MUST be awaited.
-        audio_stream = await elevenlabs_client.text_to_speech.convert(
-            voice_id=voice_id,
+        audio_stream = await asyncio.to_thread(
+            elevenlabs_client.generate,
             text=page.text,
-            model_id="eleven_multilingual_v2",
+            voice=Voice(
+                voice_id=voice_id,
+                settings=VoiceSettings(stability=0.71, similarity_boost=0.5, style=0.0, use_speaker_boost=True)
+            ),
+            model="eleven_multilingual_v2"
         )
         
-        # The `b"".join(...)` is the correct way to consume the stream.
-        audio_content = b"".join([chunk async for chunk in audio_stream])
+        audio_content = b"".join(audio_stream)
         
         chunk_file_path = f"audio/chunks/story_{project.id}_page_{page.index}.mp3"
         saved_chunk_path = await sync_to_async(default_storage.save)(chunk_file_path, ContentFile(audio_content))
@@ -145,7 +144,6 @@ async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
     except Exception as e:
         logger.error(f"Failed to generate ElevenLabs audio for page {page.index} (Project {project.id}): {e}")
         return None
-# ^^^ --- END OF CORRECTED FUNCTION --- ^^^
 
 async def _cleanup_audio_chunks(project_id: int):
     try:
