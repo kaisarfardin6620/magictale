@@ -284,7 +284,7 @@ def generate_pdf_task(self, project_id: int, base_url: str):
         default_storage.save(file_path, ContentFile(pdf_file_bytes))
         relative_pdf_url = default_storage.url(file_path)
         full_pdf_url = f"{base_url}{relative_pdf_url}"
-        print(f"Successfully generated and saved PDF for project {project_id} at {pdf_url}")
+        print(f"Successfully generated and saved PDF for project {project_id} at {full_pdf_url}")
         notification_payload = {
             "type": "progress", 
             "event": {
