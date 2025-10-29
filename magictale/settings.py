@@ -28,7 +28,7 @@ INSTALLED_APPS = [
     'allauth.socialaccount', 'allauth.socialaccount.providers.google', 'storages',
     'fcm_django', 
     'debug_toolbar',
-    'authentication', 'ai', 'subscription', 'support', 'dashboard',
+    'authentication', 'ai', 'subscription', 'support', 'dashboard','notifications',
 ]
 
 SITE_ID = 1

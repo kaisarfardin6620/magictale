@@ -33,6 +33,7 @@ RETRYABLE_EXCEPTIONS = (
     openai.RateLimitError,
     openai.InternalServerError,
 )
+from notifications.tasks import create_and_send_notification_task
 
 def on_pipeline_failure(self, exc, task_id, args, kwargs, einfo):
     project_id = args[0]
@@ -257,6 +258,14 @@ def generate_audio_task(self, project_id: int):
         total_seconds = duration.total_seconds()
         print(f"Project {project_id} generation pipeline complete. Total time: {total_seconds:.2f} seconds.")
         
+        notification_data = {"type": "story_complete", "story_id": project.id}
+        create_and_send_notification_task.delay(
+            project.user.id,
+            "Your Story is Ready!",
+            f"The adventure for '{project.child_name}' is complete and waiting for you.",
+            data=notification_data
+        )
+
         update_user_usage_task.delay(project_id)
         
     else:
@@ -302,6 +311,15 @@ def generate_pdf_task(self, project_id: int, base_url: str):
                 "pdf_url": full_pdf_url
             }
         }
+
+        notification_data = {"type": "pdf_ready", "story_id": project.id, "pdf_url": full_pdf_url}
+        create_and_send_notification_task.delay(
+            project.user.id,
+            "PDF Ready for Download",
+            f"Your PDF for the story '{project.child_name}' is ready.",
+            data=notification_data
+        )
+        
         async_to_sync(_send)(project_id, notification_payload)
     except StoryProject.DoesNotExist:
         print(f"Error generating PDF: StoryProject with id={project_id} not found.")

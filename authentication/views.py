@@ -29,7 +29,7 @@ from django.utils import timezone
 from datetime import timedelta
 from django.core.cache import cache
 from rest_framework.throttling import ScopedRateThrottle
-
+from notifications.tasks import create_and_send_notification_task
 
 class MyTokenObtainPairView(APIView):
     permission_classes = [AllowAny]
@@ -64,6 +64,11 @@ class SignupAPIView(APIView):
             html_message = render_to_string('emails/signup_verification_email.html', {'username': user.username, 'verification_url': verification_url})
             plain_message = f'Please click the link to verify your email: {verification_url}'
             send_email('Verify your email for MagicTale', plain_message, [user.email], html_message=html_message)
+            create_and_send_notification_task.delay(
+                user.id,
+                "Welcome to MagicTale!",
+                "Your account has been created successfully."
+            )
             return Response({"message": "User created successfully. Please check your email for verification."}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -138,6 +143,12 @@ class ProfileView(APIView):
             serializer = UnifiedProfileUpdateSerializer(instance=profile, data=request.data, context={'request': request}, partial=True)
             if serializer.is_valid():
                 serializer.save()
+
+                create_and_send_notification_task.delay(
+                request.user.id,
+                "Profile Updated",
+                "Your account details have been changed."
+            )
                 cache.delete(f"user_profile_{request.user.id}") 
                 return Response({'message': 'Profile updated successfully.'}, status=status.HTTP_200_OK)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -191,6 +202,11 @@ class PasswordResetConfirmView(APIView):
                 token_obj.is_used = True
                 token_obj.save()
                 OutstandingToken.objects.filter(user=user).delete()
+                create_and_send_notification_task.delay(
+                    user.id,
+                    "Password Reset",
+                    "Your password has been changed successfully."
+                )
                 context = {
                     'title': 'Password Reset Successful!',
                     'message': 'Your password has been changed. You can now log in with your new password.',

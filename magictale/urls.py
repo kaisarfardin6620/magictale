@@ -16,6 +16,8 @@ urlpatterns = [
     path("api/support/", include("support.urls")),
     path('accounts/', include('allauth.urls')),
     path('api/dashboard/', include('dashboard.urls')),
+    path('api/notifications/', include('notifications.urls')),
+
 ]
 
 

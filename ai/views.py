@@ -19,7 +19,7 @@ from .serializers import (
 )
 from authentication.permissions import HasActiveSubscription, IsOwner, IsStoryMaster
 from .throttling import SubscriptionBasedThrottle
-
+from notifications.tasks import create_and_send_notification_task
 class StoryProjectViewSet(viewsets.ModelViewSet):
     queryset = StoryProject.objects.all() 
     serializer_class = StoryProjectDetailSerializer
@@ -59,6 +59,11 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        create_and_send_notification_task.delay(
+            request.user.id,
+            "We're Building Your Story!",
+            "Your magical adventure is now being created."
+        )
         self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_202_ACCEPTED, headers=headers)

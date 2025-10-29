@@ -17,6 +17,7 @@ from fcm_django.models import FCMDevice
 import time
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework.exceptions import AuthenticationFailed
+from notifications.tasks import create_and_send_notification_task
 
 class PasswordValidator:
     @staticmethod
@@ -104,6 +105,12 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
             raise AuthenticationFailed("This account is inactive. Please verify your email before logging in.")
 
         self.user = user
+
+        create_and_send_notification_task.delay(
+            self.user.id,
+            "Login Successful",
+            f"Welcome back, {self.user.username}!"
+        )
 
         if fcm_token:
             user_agent = self.context['request'].META.get('HTTP_USER_AGENT', '').lower()
