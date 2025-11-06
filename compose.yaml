@@ -13,7 +13,6 @@ services:
       - static_volume:/app/staticfiles
       - ./media:/app/media
     depends_on:
-      - postgres-db
       - redis-cache
     networks:
       - backend
@@ -30,8 +29,7 @@ services:
       - .:/app
       - ./media:/app/media
     depends_on:
-      - postgres-db
-      - redis-cache
+      - redis-cache 
     networks:
       - backend
 
@@ -50,24 +48,6 @@ services:
     networks:
       - backend
 
-  postgres-db:
-    image: postgres:latest
-    container_name: postgres-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-magictale}
-      POSTGRES_USER: ${POSTGRES_USER:-magictale}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-magictale}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-magictale}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - backend
-
   redis-cache:
     image: redis:latest
     container_name: redis-cache
@@ -81,7 +61,6 @@ services:
       - backend
 
 volumes:
-  postgres_data:
   static_volume:
 
 networks:

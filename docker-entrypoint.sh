@@ -3,11 +3,10 @@
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
-echo "Waiting for PostgreSQL..."
-while ! pg_isready -h postgres-db -U "$POSTGRES_USER" -d "$POSTGRES_DB" -q; do
-  sleep 1
-done
-echo "PostgreSQL started"
+#
+# The loop that waited for the local 'postgres-db' container has been removed.
+# Your Django application will now connect directly to the remote DATABASE_URL.
+#
 
 echo "Applying database migrations..."
 python manage.py migrate
