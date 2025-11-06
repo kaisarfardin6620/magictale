@@ -10,11 +10,11 @@ This project is containerized using Docker and Docker Compose for streamlined de
 - **ASGI Server:** Daphne (runs the app on port 8000)
 
 ### Required Environment Variables
-- The application can use a `.env` file for environment variables. If present, uncomment the `env_file: ./.env` line in the `docker-compose.yml` to enable it.
-- **PostgreSQL Service:**
-  - `POSTGRES_DB=magictale`
-  - `POSTGRES_USER=magictale`
-  - `POSTGRES_PASSWORD=magictale`
+- The application can use a `.env` file for environment variables. The project is typically configured to use a remote PostgreSQL instance (set `DATABASE_URL` in your `.env`). If you want to run a local Postgres container, add it to `docker-compose.yml` and provide the environment below.
+- **(If running local Postgres)**
+   - `POSTGRES_DB=magictale`
+   - `POSTGRES_USER=magictale`
+   - `POSTGRES_PASSWORD=magictale`
 
 ### Build and Run Instructions
 1. **Build and Start All Services:**
