@@ -1,7 +1,6 @@
 from django.db import transaction
 from django.utils import timezone
 from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -20,6 +19,7 @@ from .serializers import (
 from authentication.permissions import HasActiveSubscription, IsOwner, IsStoryMaster
 from .throttling import SubscriptionBasedThrottle
 from notifications.tasks import create_and_send_notification_task
+
 class StoryProjectViewSet(viewsets.ModelViewSet):
     queryset = StoryProject.objects.all() 
     serializer_class = StoryProjectDetailSerializer
@@ -129,6 +129,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         if project.status == StoryProject.Status.RUNNING:
             project.status = StoryProject.Status.CANCELED
             project.save(update_fields=["status"])
+            from channels.layers import get_channel_layer
             layer = get_channel_layer()
             async_to_sync(layer.group_send)(
                 f"story_{project.id}",
@@ -168,7 +169,7 @@ class GenerationOptionsView(APIView):
     permission_classes = [permissions.IsAuthenticated, HasActiveSubscription]
 
     def get(self, request):
-        cache_key = "generation_options_all_v2" # Use a single, versioned cache key
+        cache_key = "generation_options_all_v2" 
         cached_data = cache.get(cache_key)
 
         if cached_data:

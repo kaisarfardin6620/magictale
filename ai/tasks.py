@@ -60,7 +60,7 @@ def update_user_usage_task(project_id: int):
 @shared_task(
     bind=True,
     autoretry_for=RETRYABLE_EXCEPTIONS,
-    retry_kwargs={'max_retries': 3, 'countdown': 60},
+    retry_kwargs={'max_retries': 5, 'countdown': 120, 'max_countdown': 1000}, # UPDATED: API Backoff
     on_failure=on_pipeline_failure
 )
 def generate_text_task(self, project_id: int):
@@ -118,7 +118,7 @@ async def remix_text_logic(project_id: int, choice_id: str):
 @shared_task(
     bind=True,
     autoretry_for=RETRYABLE_EXCEPTIONS,
-    retry_kwargs={'max_retries': 3, 'countdown': 60},
+    retry_kwargs={'max_retries': 5, 'countdown': 120, 'max_countdown': 1000}, # UPDATED: API Backoff
     on_failure=on_pipeline_failure
 )
 def remix_text_task(self, project_id: int, choice_id: str):
@@ -216,7 +216,7 @@ def optimize_cover_image_task(project_id: int):
         
     return project_id
 
-@shared_task(bind=True, autoretry_for=RETRYABLE_EXCEPTIONS, retry_kwargs={'max_retries': 3, 'countdown': 60}, on_failure=on_pipeline_failure)
+@shared_task(bind=True, autoretry_for=RETRYABLE_EXCEPTIONS, retry_kwargs={'max_retries': 5, 'countdown': 120, 'max_countdown': 1000}, on_failure=on_pipeline_failure) # UPDATED: API Backoff
 def generate_metadata_and_cover_task(self, project_id: int):
     from .engine import generate_metadata_and_cover_logic
     print(f"Starting STAGE 2: METADATA/COVER for project {project_id}")
@@ -288,15 +288,6 @@ def generate_pdf_task(self, project_id: int, base_url: str):
         relative_pdf_url = default_storage.url(file_path)
         full_pdf_url = f"{base_url}{relative_pdf_url}"
         print(f"Successfully generated and saved PDF for project {project_id} at {full_pdf_url}")
-        notification_payload = {
-            "type": "progress", 
-            "event": {
-                "status": "pdf_ready",
-                "message": _("Your story PDF is ready for download!"),
-                "pdf_url": full_pdf_url
-            }
-        }
-
         notification_data = {"type": "pdf_ready", "story_id": project.id, "pdf_url": full_pdf_url}
         create_and_send_notification_task.delay(
             project.user.id,
@@ -305,7 +296,6 @@ def generate_pdf_task(self, project_id: int, base_url: str):
             data=notification_data
         )
         
-        async_to_sync(_send)(project_id, notification_payload)
     except StoryProject.DoesNotExist:
         print(f"Error generating PDF: StoryProject with id={project_id} not found.")
     except Exception as e:
