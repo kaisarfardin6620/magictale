@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import StoryProject, StoryPage
 from authentication.models import OnboardingStatus
 from django.conf import settings
+from django.db import transaction
 
 class StoryPageSerializer(serializers.ModelSerializer):
     class Meta:
@@ -40,18 +41,20 @@ class StoryProjectCreateSerializer(serializers.ModelSerializer):
 
         submitted_style = data.get('art_style')
         submitted_voice = data.get('voice')
-
+        
         if submitted_style and submitted_style not in used_styles:
             if len(used_styles) >= 5:
                 raise serializers.ValidationError({
                     'art_style': "You have already used your 5 available art styles for this trial period. Please upgrade to unlock all styles."
                 })
+            data['_add_art_style'] = submitted_style 
 
         if submitted_voice and submitted_voice not in used_voices:
             if len(used_voices) >= 3:
                 raise serializers.ValidationError({
                     'voice': "You have already used your 3 available narrator voices for this trial period. Please upgrade to unlock all voices."
                 })
+            data['_add_narrator_voice'] = submitted_voice 
         
         submitted_theme = data.get('theme')
         if submitted_theme and submitted_theme not in settings.THEME_ID_TO_NAME_MAP:
@@ -62,19 +65,43 @@ class StoryProjectCreateSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        user = self.context["request"].user
-        hero_data = validated_data.pop('hero')
-        onboarding_profile, _ = OnboardingStatus.objects.get_or_create(user=user)
-        for attr, value in hero_data.items():
-            setattr(onboarding_profile, attr, value)
-        onboarding_profile.save()
-        story_project = StoryProject.objects.create(
-            user=user, onboarding=onboarding_profile,
-            child_name=hero_data['child_name'], age=hero_data['age'],
-            pronouns=hero_data['pronouns'], favorite_animal=hero_data['favorite_animal'],
-            favorite_color=hero_data['favorite_color'], **validated_data
-        )
-        return story_project
+        with transaction.atomic():
+            user = self.context["request"].user
+            hero_data = validated_data.pop('hero')
+            
+            add_art_style = validated_data.pop('_add_art_style', None)
+            add_narrator_voice = validated_data.pop('_add_narrator_voice', None)
+
+            onboarding_profile, _ = OnboardingStatus.objects.get_or_create(user=user)
+            for attr, value in hero_data.items():
+                setattr(onboarding_profile, attr, value)
+            onboarding_profile.save()
+            
+            profile = user.profile
+            update_fields = []
+            
+            if add_art_style:
+                used_styles = set(profile.used_art_styles.split(',') if profile.used_art_styles else [])
+                used_styles.add(add_art_style)
+                profile.used_art_styles = ",".join(filter(None, used_styles))
+                update_fields.append('used_art_styles')
+                
+            if add_narrator_voice:
+                used_voices = set(profile.used_narrator_voices.split(',') if profile.used_narrator_voices else [])
+                used_voices.add(add_narrator_voice)
+                profile.used_narrator_voices = ",".join(filter(None, used_voices))
+                update_fields.append('used_narrator_voices')
+            
+            if update_fields:
+                profile.save(update_fields=update_fields)
+
+            story_project = StoryProject.objects.create(
+                user=user, onboarding=onboarding_profile,
+                child_name=hero_data['child_name'], age=hero_data['age'],
+                pronouns=hero_data['pronouns'], favorite_animal=hero_data['favorite_animal'],
+                favorite_color=hero_data['favorite_color'], **validated_data
+            )
+            return story_project
 
 class StoryProjectDetailSerializer(serializers.ModelSerializer):
     page_count = serializers.SerializerMethodField()

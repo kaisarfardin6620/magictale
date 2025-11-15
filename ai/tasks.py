@@ -26,6 +26,7 @@ from PIL import Image, ImageDraw, ImageFont
 import asyncio
 from authentication.models import UserProfile
 from django.utils.translation import gettext as _
+from notifications.tasks import create_and_send_notification_task
 
 RETRYABLE_EXCEPTIONS = (
     openai.APITimeoutError,
@@ -33,7 +34,6 @@ RETRYABLE_EXCEPTIONS = (
     openai.RateLimitError,
     openai.InternalServerError,
 )
-from notifications.tasks import create_and_send_notification_task
 
 def on_pipeline_failure(self, exc, task_id, args, kwargs, einfo):
     project_id = args[0]
@@ -44,31 +44,17 @@ def on_pipeline_failure(self, exc, task_id, args, kwargs, einfo):
 def update_user_usage_task(project_id: int):
     try:
         project = StoryProject.objects.select_related('user__profile', 'user__subscription').get(id=project_id)
-        profile = project.user.profile
         subscription = project.user.subscription
 
         if not (subscription.plan == 'master' and subscription.status == 'active'):
-            print(f"Updating usage stats for user {project.user.id}")
-            
-            used_styles = set(profile.used_art_styles.split(',') if profile.used_art_styles else [])
-            if project.art_style not in used_styles:
-                used_styles.add(project.art_style)
-                profile.used_art_styles = ",".join(filter(None, used_styles))
-
-            used_voices = set(profile.used_narrator_voices.split(',') if profile.used_narrator_voices else [])
-            if project.voice not in used_voices:
-                used_voices.add(project.voice)
-                profile.used_narrator_voices = ",".join(filter(None, used_voices))
-            
-            profile.save(update_fields=['used_art_styles', 'used_narrator_voices'])
-            print(f"Successfully updated usage stats for user {project.user.id}")
+            print(f"Skipping usage update, now handled in serializer, for user {project.user.id}")
         else:
             print(f"Skipping usage update for master user {project.user.id}")
 
     except StoryProject.DoesNotExist:
         print(f"Could not update usage: StoryProject with id={project_id} not found.")
     except Exception as e:
-        print(f"An error occurred while updating user usage for project {project_id}: {e}")
+        print(f"An error occurred while checking user usage for project {project_id}: {e}")
 
 
 @shared_task(
@@ -168,7 +154,7 @@ def watermark_cover_image_task(project_id: int):
         
         text = "MagicTale AI"
         try:
-            font = ImageFont.truetype("static/fonts/arial.ttf", 40)
+            font = ImageFont.truetype("static/fonts/arial.ttf", 40) 
         except IOError:
             font = ImageFont.load_default()
         
@@ -266,7 +252,6 @@ def generate_audio_task(self, project_id: int):
             data=notification_data
         )
 
-        update_user_usage_task.delay(project_id)
         
     else:
         print(f"Project {project_id} generation pipeline complete.")
@@ -297,7 +282,7 @@ def generate_pdf_task(self, project_id: int, base_url: str):
         project = StoryProject.objects.get(id=project_id)
         context = {"project": project}
         html_string = render_to_string("ai/story_pdf_template.html", context)
-        pdf_file_bytes = HTML(string=html_string).write_pdf()
+        pdf_file_bytes = HTML(string=html_string).write_pdf() 
         file_path = f'pdfs/story_{project.id}_{project.child_name}.pdf'
         default_storage.save(file_path, ContentFile(pdf_file_bytes))
         relative_pdf_url = default_storage.url(file_path)

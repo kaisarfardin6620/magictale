@@ -109,7 +109,7 @@ def _build_cover_image_prompt(synopsis: str, project: StoryProject) -> str:
 
 async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
     try:
-        voice_id = project.voice or settings.TIER_1_NARRATOR_VOICES[0]
+        voice_id = project.voice or settings.ALL_NARRATOR_VOICES[0]
         
         logger.info(f"Generating audio for Page {page.index} with text: '{page.text[:100]}...'")
 
