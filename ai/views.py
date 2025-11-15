@@ -176,7 +176,11 @@ class GenerationOptionsView(APIView):
             return Response(cached_data, status=status.HTTP_200_OK)
 
         themes_response = [
-            {"id": theme_id, "name": theme_data["name"]}
+            {
+                "id": theme_id, 
+                "name": theme_data["name"],
+                "description": theme_data["choices"][0]["description"] if theme_data.get("choices") else theme_data["name"]
+            }
             for theme_id, theme_data in settings.ALL_THEMES_DATA.items()
         ]
         
