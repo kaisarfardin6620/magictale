@@ -29,7 +29,22 @@ services:
       - .:/app
       - ./media:/app/media
     depends_on:
-      - redis-cache 
+      - redis-cache
+    networks:
+      - backend
+
+  celery-beat:
+    build:
+      context: .
+    container_name: celery-beat
+    restart: unless-stopped
+    init: true
+    env_file: ./.env
+    command: ["celery", "-A", "magictale", "beat", "--loglevel=info"]
+    volumes:
+      - .:/app
+    depends_on:
+      - redis-cache
     networks:
       - backend
 

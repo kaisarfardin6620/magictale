@@ -1,5 +1,5 @@
 import openai
-from celery import shared_task, chain
+from celery import shared_task, chain, group
 from asgiref.sync import async_to_sync
 from weasyprint import HTML
 from django.template.loader import render_to_string
@@ -15,6 +15,7 @@ from .engine import (
     generate_text_logic,
     generate_audio_logic,
     handle_generation_failure,
+    _create_variant_project,
     openai_client,
 )
 from django.conf import settings
@@ -27,6 +28,10 @@ import asyncio
 from authentication.models import UserProfile
 from django.utils.translation import gettext as _
 from notifications.tasks import create_and_send_notification_task
+from django.utils import timezone
+from datetime import timedelta
+from urllib.parse import urlparse
+from asgiref.sync import sync_to_async
 
 RETRYABLE_EXCEPTIONS = (
     openai.APITimeoutError,
@@ -56,18 +61,48 @@ def update_user_usage_task(project_id: int):
     except Exception as e:
         print(f"An error occurred while checking user usage for project {project_id}: {e}")
 
-
 @shared_task(
     bind=True,
     autoretry_for=RETRYABLE_EXCEPTIONS,
-    retry_kwargs={'max_retries': 5, 'countdown': 120, 'max_countdown': 1000}, # UPDATED: API Backoff
+    retry_kwargs={'max_retries': 5, 'countdown': 10, 'max_countdown': 60},
     on_failure=on_pipeline_failure
 )
 def generate_text_task(self, project_id: int):
     print(f"Starting STAGE 1: TEXT for project {project_id}")
     async_to_sync(generate_text_logic)(project_id)
     print(f"Finished STAGE 1: TEXT for project {project_id}")
+    
+    generate_variants_task.delay(project_id)
+    
     return project_id 
+
+@shared_task
+def generate_variants_task(project_id: int):
+    try:
+        project = StoryProject.objects.select_related('user__subscription').get(id=project_id)
+        if project.user.subscription.plan != 'master' or project.user.subscription.status != 'active':
+            return
+        
+        if project.parent_project:
+            return
+
+        print(f"Starting fan-out generation for project {project_id} (Master Plan)")
+        
+        theme_data = settings.ALL_THEMES_DATA.get(project.theme)
+        if not theme_data or not theme_data.get('choices'):
+            return
+
+        choices = theme_data['choices'][:3]
+        
+        for choice in choices:
+            variant_project = async_to_sync(_create_variant_project)(project, choice['name'])
+            start_story_remix_pipeline(variant_project.id, choice['id'])
+            
+    except StoryProject.DoesNotExist:
+        pass
+    except Exception as e:
+        print(f"Error generating variants for project {project_id}: {e}")
+
 
 async def remix_text_logic(project_id: int, choice_id: str):
     project = await _reload_project(project_id)
@@ -86,7 +121,13 @@ async def remix_text_logic(project_id: int, choice_id: str):
     prompt_dir = Path(__file__).parent / "prompts"
     remix_prompt_template = (prompt_dir / "remix_prompt.txt").read_text()
     
-    original_paragraphs = project.text.split('\n\n')
+    parent_project = await sync_to_async(lambda: project.parent_project)()
+    parent_text = await sync_to_async(lambda: parent_project.text if parent_project else None)()
+    if parent_text:
+        original_paragraphs = parent_text.split('\n\n')
+    else:
+        original_paragraphs = project.text.split('\n\n')
+        
     first_half_text = "\n\n".join(original_paragraphs[:len(original_paragraphs)//2])
 
     remix_prompt = remix_prompt_template.format(
@@ -118,7 +159,7 @@ async def remix_text_logic(project_id: int, choice_id: str):
 @shared_task(
     bind=True,
     autoretry_for=RETRYABLE_EXCEPTIONS,
-    retry_kwargs={'max_retries': 5, 'countdown': 120, 'max_countdown': 1000}, # UPDATED: API Backoff
+    retry_kwargs={'max_retries': 5, 'countdown': 10, 'max_countdown': 60},
     on_failure=on_pipeline_failure
 )
 def remix_text_task(self, project_id: int, choice_id: str):
@@ -171,7 +212,6 @@ def watermark_cover_image_task(project_id: int):
         watermarked_img.convert('RGB').save(buffer, format='JPEG', quality=90)
         buffer.seek(0)
         
-        from urllib.parse import urlparse
         file_path = urlparse(project.cover_image_url).path.lstrip('/')
         
         new_file = ContentFile(buffer.read())
@@ -203,7 +243,6 @@ def optimize_cover_image_task(project_id: int):
         img.convert('RGB').save(buffer, format='JPEG', quality=85, optimize=True)
         buffer.seek(0)
         
-        from urllib.parse import urlparse
         original_path = urlparse(project.cover_image_url).path.lstrip('/')
         
         new_file = ContentFile(buffer.read())
@@ -216,7 +255,7 @@ def optimize_cover_image_task(project_id: int):
         
     return project_id
 
-@shared_task(bind=True, autoretry_for=RETRYABLE_EXCEPTIONS, retry_kwargs={'max_retries': 5, 'countdown': 120, 'max_countdown': 1000}, on_failure=on_pipeline_failure) # UPDATED: API Backoff
+@shared_task(bind=True, autoretry_for=RETRYABLE_EXCEPTIONS, retry_kwargs={'max_retries': 5, 'countdown': 120, 'max_countdown': 1000}, on_failure=on_pipeline_failure)
 def generate_metadata_and_cover_task(self, project_id: int):
     from .engine import generate_metadata_and_cover_logic
     print(f"Starting STAGE 2: METADATA/COVER for project {project_id}")
@@ -270,6 +309,7 @@ def start_story_generation_pipeline(project_id: int):
 def start_story_remix_pipeline(project_id: int, choice_id: str):
     pipeline = chain(
         remix_text_task.s(project_id, choice_id),
+        generate_metadata_and_cover_task.s(),
         generate_audio_task.s()
     )
     print(f"Dispatching REMIX pipeline for project {project_id}")
@@ -282,11 +322,18 @@ def generate_pdf_task(self, project_id: int, base_url: str):
         project = StoryProject.objects.get(id=project_id)
         context = {"project": project}
         html_string = render_to_string("ai/story_pdf_template.html", context)
-        pdf_file_bytes = HTML(string=html_string).write_pdf() 
+        
+        pdf_file_bytes = HTML(string=html_string, base_url=base_url).write_pdf() 
+        
         file_path = f'pdfs/story_{project.id}_{project.child_name}.pdf'
         default_storage.save(file_path, ContentFile(pdf_file_bytes))
         relative_pdf_url = default_storage.url(file_path)
-        full_pdf_url = f"{base_url}{relative_pdf_url}"
+        
+        if relative_pdf_url.startswith('http'):
+            full_pdf_url = relative_pdf_url
+        else:
+            full_pdf_url = f"{base_url}{relative_pdf_url}"
+        
         print(f"Successfully generated and saved PDF for project {project_id} at {full_pdf_url}")
         notification_data = {"type": "pdf_ready", "story_id": project.id, "pdf_url": full_pdf_url}
         create_and_send_notification_task.delay(
@@ -301,3 +348,48 @@ def generate_pdf_task(self, project_id: int, base_url: str):
     except Exception as e:
         print(f"An unexpected error occurred during PDF generation for project {project_id}: {e}")
         raise
+
+@shared_task
+def cleanup_stalled_projects_task():
+    print("Running cleanup for stalled/failed projects older than 24 hours...")
+    try:
+        cutoff_time = timezone.now() - timedelta(hours=24)
+        
+        stale_projects = StoryProject.objects.filter(
+            created_at__lt=cutoff_time,
+            status__in=['failed', 'pending', 'running', 'canceled']
+        )
+        
+        count = stale_projects.count()
+        if count == 0:
+            print("No stale projects found to clean up.")
+            return
+
+        for project in stale_projects:
+            try:
+                if project.cover_image_url:
+                    path = urlparse(project.cover_image_url).path.lstrip('/')
+                    if default_storage.exists(path):
+                        default_storage.delete(path)
+                
+                if project.audio_url:
+                    path = urlparse(project.audio_url).path.lstrip('/')
+                    if default_storage.exists(path):
+                        default_storage.delete(path)
+                
+                for page in project.pages.all():
+                    if page.audio_url:
+                        path = urlparse(page.audio_url).path.lstrip('/')
+                        if default_storage.exists(path):
+                            default_storage.delete(path)
+                
+                async_to_sync(_cleanup_audio_chunks)(project.id)
+                
+            except Exception as e:
+                print(f"Error cleaning up files for project {project.id}: {e}")
+        
+        stale_projects.delete()
+        print(f"Successfully cleaned up {count} stalled projects.")
+        
+    except Exception as e:
+        print(f"Fatal error during cleanup task: {e}")

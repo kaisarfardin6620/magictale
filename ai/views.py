@@ -34,7 +34,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
             .order_by("-created_at")
         )
         if self.action == 'list':
-            return queryset.filter(is_saved=True)
+            return queryset.filter(is_saved=True, parent_project__isnull=True)
         return queryset
 
     def get_serializer_class(self):
@@ -70,7 +70,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def latest(self, request):
-        latest_story = StoryProject.objects.filter(user=request.user).select_related('user').order_by('-created_at').first()
+        latest_story = StoryProject.objects.filter(user=request.user, parent_project__isnull=True).select_related('user').order_by('-created_at').first()
         if not latest_story:
             raise NotFound(_("No stories found for this user."))
         

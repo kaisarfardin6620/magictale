@@ -10,6 +10,7 @@ class StoryProject(models.Model):
         CANCELED = "canceled"
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="story_projects")
+    parent_project = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="variants")
     onboarding = models.ForeignKey(
         "authentication.OnboardingStatus",
         on_delete=models.SET_NULL,
@@ -17,6 +18,7 @@ class StoryProject(models.Model):
         null=True,
         blank=True
     )
+    title = models.CharField(max_length=200, blank=True, default="")
     child_name = models.CharField(max_length=100)
     age = models.PositiveIntegerField()
     pronouns = models.CharField(max_length=50)
@@ -40,7 +42,7 @@ class StoryProject(models.Model):
     read_count = models.PositiveIntegerField(default=0)
     likes_count = models.PositiveIntegerField(default=0)
     shares_count = models.PositiveIntegerField(default=0)
-    model_used = models.CharField(max_length=80, default="gpt-4o-mini")
+    model_used = models.CharField(max_length=80, default="gpt-4-turbo")
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     progress = models.PositiveSmallIntegerField(default=0)
     error = models.TextField(blank=True, default="")
@@ -49,7 +51,8 @@ class StoryProject(models.Model):
     finished_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
-        return f"Story for '{self.child_name}' ({self.user.username}) - {self.status}"
+        display_title = self.title if self.title else f"Story for {self.child_name}"
+        return f"{display_title} ({self.user.username}) - {self.status}"
 
 class StoryPage(models.Model):
     project = models.ForeignKey(StoryProject, on_delete=models.CASCADE, related_name="pages")
