@@ -9,3 +9,4 @@ __pycache__
 __init__.py
 media
 migrations
+celerybeat-schedule
