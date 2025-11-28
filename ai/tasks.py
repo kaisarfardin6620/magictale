@@ -16,7 +16,6 @@ from .engine import (
     generate_audio_logic,
     handle_generation_failure,
     _create_variant_project,
-    openai_client,
 )
 from django.conf import settings
 from pathlib import Path
@@ -31,7 +30,7 @@ from notifications.tasks import create_and_send_notification_task
 from django.utils import timezone
 from datetime import timedelta
 from urllib.parse import urlparse
-from asgiref.sync import sync_to_async
+from openai import AsyncOpenAI
 
 RETRYABLE_EXCEPTIONS = (
     openai.APITimeoutError,
@@ -105,6 +104,8 @@ def generate_variants_task(project_id: int):
 
 
 async def remix_text_logic(project_id: int, choice_id: str):
+    openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+    
     project = await _reload_project(project_id)
     if not project or project.status != 'running': return
 
@@ -121,10 +122,8 @@ async def remix_text_logic(project_id: int, choice_id: str):
     prompt_dir = Path(__file__).parent / "prompts"
     remix_prompt_template = (prompt_dir / "remix_prompt.txt").read_text()
     
-    parent_project = await sync_to_async(lambda: project.parent_project)()
-    parent_text = await sync_to_async(lambda: parent_project.text if parent_project else None)()
-    if parent_text:
-        original_paragraphs = parent_text.split('\n\n')
+    if project.parent_project and project.parent_project.text:
+        original_paragraphs = project.parent_project.text.split('\n\n')
     else:
         original_paragraphs = project.text.split('\n\n')
         
@@ -136,7 +135,7 @@ async def remix_text_logic(project_id: int, choice_id: str):
     )
     
     text_resp = await openai_client.chat.completions.create(
-        model=project.model_used or "gpt-4-turbo",
+        model=project.model_used or "gpt-4o-2024-08-06",
         messages=[{"role": "user", "content": remix_prompt}],
         temperature=0.8,
         timeout=90.0
@@ -212,6 +211,7 @@ def watermark_cover_image_task(project_id: int):
         watermarked_img.convert('RGB').save(buffer, format='JPEG', quality=90)
         buffer.seek(0)
         
+        from urllib.parse import urlparse
         file_path = urlparse(project.cover_image_url).path.lstrip('/')
         
         new_file = ContentFile(buffer.read())
@@ -243,6 +243,7 @@ def optimize_cover_image_task(project_id: int):
         img.convert('RGB').save(buffer, format='JPEG', quality=85, optimize=True)
         buffer.seek(0)
         
+        from urllib.parse import urlparse
         original_path = urlparse(project.cover_image_url).path.lstrip('/')
         
         new_file = ContentFile(buffer.read())

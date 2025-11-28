@@ -7,7 +7,7 @@ from django.db import transaction
 class StoryPageSerializer(serializers.ModelSerializer):
     class Meta:
         model = StoryPage
-        fields = ["index", "text", "audio_url"]
+        fields = ["index", "text", "audio_url", "audio_duration"]
 
 class HeroSerializer(serializers.ModelSerializer):
     class Meta:
@@ -122,7 +122,7 @@ class StoryProjectDetailSerializer(serializers.ModelSerializer):
             "favorite_color", "theme", "custom_prompt", "art_style", "language", "voice", "length", 
             "difficulty", "model_used", "synopsis", "tags", "status", "progress", "error", "read_count", 
             "likes_count", "shares_count", "created_at", "started_at", "finished_at", "text", "image_url", "audio_url",
-            "page_count", "variants"
+            "audio_duration_seconds", "page_count", "variants"
         ]
     def get_page_count(self, obj):
         return obj.pages.count()

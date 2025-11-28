@@ -42,7 +42,7 @@ class StoryProject(models.Model):
     read_count = models.PositiveIntegerField(default=0)
     likes_count = models.PositiveIntegerField(default=0)
     shares_count = models.PositiveIntegerField(default=0)
-    model_used = models.CharField(max_length=80, default="gpt-4-turbo")
+    model_used = models.CharField(max_length=80, default="gpt-4o-2024-08-06")
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     progress = models.PositiveSmallIntegerField(default=0)
     error = models.TextField(blank=True, default="")
@@ -59,6 +59,7 @@ class StoryPage(models.Model):
     index = models.PositiveIntegerField()
     text = models.TextField()
     audio_url = models.URLField(max_length=1024, blank=True, default="")
+    audio_duration = models.FloatField(null=True, blank=True, help_text="Duration in seconds")
     
     class Meta:
         unique_together = ("project", "index")

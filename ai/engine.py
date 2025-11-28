@@ -19,9 +19,6 @@ from .prompts import get_story_prompts
 from elevenlabs import Voice, VoiceSettings
 from copy import deepcopy
 
-openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-elevenlabs_client = AsyncElevenLabs(api_key=settings.ELEVENLABS_API_KEY)
-
 logger = logging.getLogger(__name__)
 
 LENGTH_TO_TOKENS = {
@@ -31,9 +28,18 @@ LENGTH_TO_TOKENS = {
 }
 DEFAULT_TEXT_MODEL = getattr(settings, "AI_TEXT_MODEL", "gpt-4o-2024-08-06")
 
+STYLE_PROMPT_ENHANCERS = {
+    "anime": "Japanese anime art style, Studio Ghibli inspired, high quality, vibrant colors, detailed backgrounds, cel shaded, 4k resolution, cinematic lighting, masterpiece",
+    "watercolor": "soft watercolor illustration, dreamy pastel colors, hand-painted texture, storybook style",
+    "pixar": "3D Pixar animation style, octane render, bright lighting, expressive characters, cute, high detail",
+    "papercut": "layered paper cut-out art, depth of field, dimensional shadows, craft texture, whimsical",
+    "african_folktale": "traditional African art pattern style, bold geometric shapes, earthy colors, cultural folk art",
+    "clay": "stop-motion claymation style, plasticine texture, handmade look, soft lighting",
+}
+
 @sync_to_async
 def _reload_project(project_id: int) -> StoryProject | None:
-    return StoryProject.objects.prefetch_related('pages').filter(pk=project_id).first()
+    return StoryProject.objects.select_related('parent_project').prefetch_related('pages').filter(pk=project_id).first()
 
 @sync_to_async
 def _save_event(project: StoryProject, kind: str, payload: dict):
@@ -98,6 +104,7 @@ def _split_text_into_pages(full_text: str):
     return pages
 
 async def _generate_synopsis_and_tags_async(full_text: str):
+    openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
     synopsis_prompt = _build_synopsis_prompt(full_text)
     try:
         synopsis_resp = await openai_client.chat.completions.create(
@@ -121,6 +128,7 @@ async def _generate_synopsis_and_tags_async(full_text: str):
     return metadata
 
 async def _generate_cover_image_async(metadata: dict, project: StoryProject):
+    openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
     theme_name = settings.THEME_ID_TO_NAME_MAP.get(project.theme, project.theme)
     image_prompt = _build_cover_image_prompt(metadata.get("synopsis", theme_name), project)
     try:
@@ -153,16 +161,22 @@ def _build_cover_image_prompt(synopsis: str, project: StoryProject) -> str:
     prompt_dir = Path(__file__).parent / "prompts"
     theme_name = settings.THEME_ID_TO_NAME_MAP.get(project.theme, project.theme)
     prompt_subject = synopsis if synopsis and len(synopsis) > 20 else theme_name
-    art_style_name = settings.ART_STYLE_ID_TO_NAME_MAP.get(project.art_style, project.art_style)
-    return (prompt_dir / "cover_image_prompt.txt").read_text().format(art_style=art_style_name, prompt_subject=prompt_subject)
+    
+    art_style_key = project.art_style
+    art_style_description = STYLE_PROMPT_ENHANCERS.get(art_style_key)
+    
+    if not art_style_description:
+        art_style_description = settings.ART_STYLE_ID_TO_NAME_MAP.get(art_style_key, art_style_key)
 
-async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
+    return (prompt_dir / "cover_image_prompt.txt").read_text().format(art_style=art_style_description, prompt_subject=prompt_subject)
+
+async def _generate_audio_for_page(page: StoryPage, project: StoryProject, client: AsyncElevenLabs):
     try:
         voice_id = project.voice or settings.ALL_NARRATOR_VOICES[0]
         
         logger.info(f"Generating audio for Page {page.index} with text: '{page.text[:100]}...'")
 
-        audio_stream = elevenlabs_client.text_to_speech.convert(
+        audio_stream = client.text_to_speech.convert(
             voice_id=voice_id,
             text=page.text,
             model_id="eleven_multilingual_v2",
@@ -176,14 +190,22 @@ async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
             logger.warning(f"Audio for page {page.index} is empty or invalid. Skipping.")
             return None
 
+        try:
+            audio_segment = AudioSegment.from_file(io.BytesIO(audio_content), format="mp3")
+            duration_seconds = len(audio_segment) / 1000.0
+            page.audio_duration = duration_seconds
+        except Exception as e:
+            logger.warning(f"Could not calculate duration for page {page.index}: {e}")
+
         chunk_file_path = f"audio/chunks/story_{project.id}_page_{page.index}.mp3"
         saved_chunk_path = await sync_to_async(default_storage.save)(chunk_file_path, ContentFile(audio_content))
         page.audio_url = await sync_to_async(default_storage.url)(saved_chunk_path)
+        
         await sync_to_async(page.save)()
         return io.BytesIO(audio_content)
     except Exception as e:
         logger.error(f"Failed to generate ElevenLabs audio for page {page.index} (Project {project.id}): {e}")
-        raise e
+        return None
 
 async def _cleanup_audio_chunks(project_id: int):
     try:
@@ -204,6 +226,7 @@ async def _cleanup_audio_chunks(project_id: int):
         logger.warning(f"Failed to clean up audio chunks for project {project_id}: {e}")
 
 async def generate_text_logic(project_id: int):
+    openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
     project = await _reload_project(project_id)
     if not project or project.status != 'running': return
 
@@ -217,11 +240,9 @@ async def generate_text_logic(project_id: int):
 
         token_limit = LENGTH_TO_TOKENS.get(project.length, 4000)
         
-        # CRITICAL FIX: Ensure we use the capable model if token count is high
         model_to_use = project.model_used or DEFAULT_TEXT_MODEL
         if token_limit > 4000 and "gpt-4o" not in model_to_use:
              model_to_use = "gpt-4o-2024-08-06"
-             logger.warning(f"Project {project_id} forced to use {model_to_use} due to high token limit.")
 
         text_resp = await openai_client.chat.completions.create(
             model=model_to_use,
@@ -231,9 +252,7 @@ async def generate_text_logic(project_id: int):
         full_text = text_resp.choices[0].message.content.strip() if text_resp.choices else ""
         if not full_text: raise ValueError("AI returned an empty story text.")
 
-        # Update the project to reflect the model actually used
         await _update_project_state(project, progress=30, text=full_text, model_used=model_to_use)
-        
         page_texts = _split_text_into_pages(full_text)
         await _delete_pages(project)
         page_objects = [await _create_page(project, i, text) for i, text in enumerate(page_texts, start=1)]
@@ -260,6 +279,8 @@ async def generate_metadata_and_cover_logic(project_id: int):
         raise e
 
 async def generate_audio_logic(project_id: int):
+    elevenlabs_client = AsyncElevenLabs(api_key=settings.ELEVENLABS_API_KEY)
+    
     project = await _reload_project(project_id)
     if not project or project.status != 'running': return
 
@@ -269,11 +290,11 @@ async def generate_audio_logic(project_id: int):
     try:
         page_objects = await sync_to_async(list)(project.pages.all())
         
-        semaphore = asyncio.Semaphore(1)
+        semaphore = asyncio.Semaphore(3)
 
         async def generate_with_semaphore(page, project):
             async with semaphore:
-                return await _generate_audio_for_page(page, project)
+                return await _generate_audio_for_page(page, project, elevenlabs_client)
 
         audio_tasks = [generate_with_semaphore(page, project) for page in page_objects]
         
@@ -289,7 +310,12 @@ async def generate_audio_logic(project_id: int):
                 except Exception as e:
                     logger.error(f"Failed to process audio chunk for project {project_id}: {e}")
 
-        if combined_audio is None: raise RuntimeError("Failed to generate any valid audio chunks.")
+        if combined_audio is None:
+            logger.warning(f"No valid audio generated for Project {project_id}. Completing text-only.")
+            await _update_project_state(project, status="done", progress=100, finished=True)
+            await _save_event(project, "done", {"warning": "Audio generation failed"})
+            await _send(project_id, {"status": "done", "progress": 100, "message": _("Your story is ready (audio was unavailable).")})
+            return
 
         with io.BytesIO() as buffer:
             combined_audio.export(buffer, format="mp3")
@@ -321,12 +347,12 @@ async def handle_generation_failure(project_id: int, exc: Exception):
     error_type = type(exc).__name__
 
     if isinstance(exc, BadRequestError):
-        error_message = _("Our story-maker couldn't process this request (it might be too long for this model). Please try 'Medium' length.")
+        error_message = _("Our story-maker couldn't process this request. Please try a different theme.")
     elif isinstance(exc, AuthenticationError):
-        logger.critical("OpenAI API Key is invalid or expired.")
-        error_message = _("We are experiencing a temporary service issue. Please try again later.")
+        logger.critical("AI API Key is invalid.")
+        error_message = _("Service temporarily unavailable.")
     elif isinstance(exc, RateLimitError):
-        error_message = _("The AI story-maker is currently very busy. Please try again in a moment.")
+        error_message = _("System is busy. Please try again in a moment.")
     elif isinstance(exc, APIError):
         error_message = _("The AI service is temporarily unavailable. Please try again.")
     elif "elevenlabs" in str(type(exc)).lower() or "elevenlabs" in str(exc).lower():
