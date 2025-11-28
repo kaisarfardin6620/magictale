@@ -104,14 +104,39 @@ class StoryProjectCreateSerializer(serializers.ModelSerializer):
             return story_project
 
 class VariantSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+    audio_url = serializers.SerializerMethodField()
+    audio_error = serializers.SerializerMethodField()
+
     class Meta:
         model = StoryProject
-        fields = ["id", "title", "custom_prompt", "status"]
+        fields = [
+            "id", "title", "text", "custom_prompt", "status", 
+            "image_url", "audio_url", "audio_duration_seconds", 
+            "synopsis", "audio_error"
+        ]
+
+    def get_image_url(self, obj):
+        return obj.image_url if obj.image_url else None
+
+    def get_audio_url(self, obj):
+        if obj.audio_url:
+            if settings.USE_S3_STORAGE:
+                return obj.audio_url
+            return f"{settings.BACKEND_BASE_URL}{obj.audio_url}"
+        return None
+
+    def get_audio_error(self, obj):
+        error_event = obj.events.filter(kind='done', payload__warning='Audio generation failed').first()
+        if error_event:
+            return "Audio generation failed due to quota or service issues."
+        return None
 
 class StoryProjectDetailSerializer(serializers.ModelSerializer):
     page_count = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
     audio_url = serializers.SerializerMethodField()
+    audio_error = serializers.SerializerMethodField()
     variants = serializers.SerializerMethodField()
     
     class Meta:
@@ -122,7 +147,7 @@ class StoryProjectDetailSerializer(serializers.ModelSerializer):
             "favorite_color", "theme", "custom_prompt", "art_style", "language", "voice", "length", 
             "difficulty", "model_used", "synopsis", "tags", "status", "progress", "error", "read_count", 
             "likes_count", "shares_count", "created_at", "started_at", "finished_at", "text", "image_url", "audio_url",
-            "audio_duration_seconds", "page_count", "variants"
+            "audio_duration_seconds", "audio_error", "page_count", "variants"
         ]
     def get_page_count(self, obj):
         return obj.pages.count()
@@ -135,6 +160,12 @@ class StoryProjectDetailSerializer(serializers.ModelSerializer):
             if settings.USE_S3_STORAGE:
                 return obj.audio_url
             return f"{settings.BACKEND_BASE_URL}{obj.audio_url}"
+        return None
+
+    def get_audio_error(self, obj):
+        error_event = obj.events.filter(kind='done', payload__warning='Audio generation failed').first()
+        if error_event:
+            return "Audio generation failed due to quota or service issues."
         return None
     
     def get_variants(self, obj):

@@ -170,7 +170,9 @@ def _build_cover_image_prompt(synopsis: str, project: StoryProject) -> str:
 
     return (prompt_dir / "cover_image_prompt.txt").read_text().format(art_style=art_style_description, prompt_subject=prompt_subject)
 
-async def _generate_audio_for_page(page: StoryPage, project: StoryProject, client: AsyncElevenLabs):
+async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
+    client = AsyncElevenLabs(api_key=settings.ELEVENLABS_API_KEY)
+    
     try:
         voice_id = project.voice or settings.ALL_NARRATOR_VOICES[0]
         
@@ -279,8 +281,6 @@ async def generate_metadata_and_cover_logic(project_id: int):
         raise e
 
 async def generate_audio_logic(project_id: int):
-    elevenlabs_client = AsyncElevenLabs(api_key=settings.ELEVENLABS_API_KEY)
-    
     project = await _reload_project(project_id)
     if not project or project.status != 'running': return
 
@@ -290,11 +290,11 @@ async def generate_audio_logic(project_id: int):
     try:
         page_objects = await sync_to_async(list)(project.pages.all())
         
-        semaphore = asyncio.Semaphore(3)
+        semaphore = asyncio.Semaphore(2)
 
         async def generate_with_semaphore(page, project):
             async with semaphore:
-                return await _generate_audio_for_page(page, project, elevenlabs_client)
+                return await _generate_audio_for_page(page, project)
 
         audio_tasks = [generate_with_semaphore(page, project) for page in page_objects]
         
