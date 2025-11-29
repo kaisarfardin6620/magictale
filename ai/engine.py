@@ -22,9 +22,9 @@ from copy import deepcopy
 logger = logging.getLogger(__name__)
 
 LENGTH_TO_TOKENS = {
-    "short": 4000, 
-    "medium": 7000, 
-    "long": 10000, 
+    "short": 1000, 
+    "medium": 1500, 
+    "long": 2000, 
 }
 DEFAULT_TEXT_MODEL = getattr(settings, "AI_TEXT_MODEL", "gpt-4o-2024-08-06")
 
