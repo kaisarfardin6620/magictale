@@ -24,9 +24,9 @@ from urllib.parse import urlparse
 logger = logging.getLogger(__name__)
 
 LENGTH_TO_TOKENS = {
-    "short": 4000, 
-    "medium": 7000, 
-    "long": 10000, 
+    "short": 100, 
+    "medium": 300, 
+    "long": 500, 
 }
 DEFAULT_TEXT_MODEL = getattr(settings, "AI_TEXT_MODEL", "gpt-4o-2024-08-06")
 

@@ -71,6 +71,7 @@ def generate_text_task(self, project_id: int):
     async_to_sync(generate_text_logic)(project_id)
     print(f"Finished STAGE 1: TEXT for project {project_id}")
     
+    # Trigger the check for variants
     generate_variants_task.delay(project_id)
     
     return project_id 
@@ -79,13 +80,27 @@ def generate_text_task(self, project_id: int):
 def generate_variants_task(project_id: int):
     try:
         project = StoryProject.objects.select_related('user__subscription').get(id=project_id)
-        if project.user.subscription.plan != 'master' or project.user.subscription.status != 'active':
+        
+        # --- STRICT CHECK & DEBUGGING ---
+        user_plan = project.user.subscription.plan
+        user_status = project.user.subscription.status
+        
+        print(f"DEBUG: Checking Variants for Project {project_id}. Plan: '{user_plan}', Status: '{user_status}'")
+
+        if user_plan != 'master':
+            print(f"STOP: Variants blocked. User is '{user_plan}', required 'master'.")
+            return
+        
+        if user_status != 'active':
+            print(f"STOP: Variants blocked. Subscription status is '{user_status}', required 'active'.")
             return
         
         if project.parent_project:
+            print(f"STOP: This is already a variant project.")
             return
+        # --------------------------------
 
-        print(f"Starting fan-out generation for project {project_id} (Master Plan)")
+        print(f"START: Fan-out generation for project {project_id} (Master Plan Validated)")
         
         theme_data = settings.ALL_THEMES_DATA.get(project.theme)
         if not theme_data or not theme_data.get('choices'):
