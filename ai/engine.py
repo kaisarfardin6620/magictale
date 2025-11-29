@@ -181,7 +181,7 @@ async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
         audio_stream = client.text_to_speech.convert(
             voice_id=voice_id,
             text=page.text,
-            model_id="eleven_multilingual_v2",
+            model_id="eleven_flash_v2_5",
         )
         
         audio_content = b"".join([chunk async for chunk in audio_stream])
