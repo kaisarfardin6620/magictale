@@ -51,6 +51,12 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         project.save(update_fields=["status", "started_at", "progress", "error"])
         transaction.on_commit(lambda: start_story_generation_pipeline(project.id))
 
+    def retrieve(self, request, *args, **kwargs):
+        pk = kwargs.get('pk')
+        if not pk or not pk.isdigit():
+            raise NotFound("Invalid Story ID.")
+        return super().retrieve(request, *args, **kwargs)
+
     def create(self, request, *args, **kwargs):
         story_master_permission = IsStoryMaster()
         if request.data.get('length') == 'long':

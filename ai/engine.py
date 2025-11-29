@@ -2,6 +2,7 @@ import asyncio
 import os
 import json
 import io
+import requests
 from pathlib import Path
 from django.utils import timezone
 from asgiref.sync import sync_to_async
@@ -18,13 +19,14 @@ from .models import StoryProject, GenerationEvent, StoryPage
 from .prompts import get_story_prompts
 from elevenlabs import Voice, VoiceSettings
 from copy import deepcopy
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 LENGTH_TO_TOKENS = {
-    "short": 1000, 
-    "medium": 1500, 
-    "long": 2000, 
+    "short": 4000, 
+    "medium": 7000, 
+    "long": 10000, 
 }
 DEFAULT_TEXT_MODEL = getattr(settings, "AI_TEXT_MODEL", "gpt-4o-2024-08-06")
 
@@ -170,12 +172,28 @@ def _build_cover_image_prompt(synopsis: str, project: StoryProject) -> str:
 
     return (prompt_dir / "cover_image_prompt.txt").read_text().format(art_style=art_style_description, prompt_subject=prompt_subject)
 
+@sync_to_async
+def _fetch_file_content(path):
+    # Synchronous wrapper to safely read file content
+    with default_storage.open(path, 'rb') as f:
+        return f.read()
+
 async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
+    # MONEY SAVER LOGIC: Check if audio already exists
+    if page.audio_url and default_storage.exists(urlparse(page.audio_url).path.lstrip('/')):
+        logger.info(f"Audio already exists for Page {page.index}. Downloading from storage to save credits.")
+        try:
+            file_path = urlparse(page.audio_url).path.lstrip('/')
+            audio_content = await _fetch_file_content(file_path)
+            return io.BytesIO(audio_content)
+        except Exception as e:
+            logger.warning(f"Failed to read existing audio for page {page.index}, re-generating: {e}")
+
+    # Standard Generation Logic
     client = AsyncElevenLabs(api_key=settings.ELEVENLABS_API_KEY)
     
     try:
         voice_id = project.voice or settings.ALL_NARRATOR_VOICES[0]
-        
         logger.info(f"Generating audio for Page {page.index} with text: '{page.text[:100]}...'")
 
         audio_stream = client.text_to_speech.convert(
