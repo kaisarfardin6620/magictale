@@ -52,8 +52,16 @@ MIDDLEWARE = [
 ROOT_URLCONF = 'magictale.urls'
 ASGI_APPLICATION = 'magictale.asgi:application'
 
-DATABASES = {'default': env.db('DATABASE_URL', default=f'sqlite:///{BASE_DIR / "db.sqlite3"}')}
-DATABASES['default']['conn_max_age'] = 600
+DATABASES = {
+    'default': env.db(
+        'DATABASE_URL', 
+        default=f'sqlite:///{BASE_DIR / "db.sqlite3"}'
+    )
+}
+
+# Only enable persistent connections for PostgreSQL/MySQL, NOT for SQLite
+if DATABASES['default']['ENGINE'] != 'django.db.backends.sqlite3':
+    DATABASES['default']['conn_max_age'] = 600
 
 AUTHENTICATION_BACKENDS = ('django.contrib.auth.backends.ModelBackend', 'allauth.account.auth_backends.AuthenticationBackend',)
 AUTH_PASSWORD_VALIDATORS = [
