@@ -4,12 +4,8 @@ from subscription.models import Subscription
 from ai.models import StoryProject
 from .models import SiteSettings
 from django.conf import settings
-import stripe
 from authentication.serializers import PasswordValidator
 from authentication.models import UserProfile
-
-stripe.api_key = settings.STRIPE_SECRET_KEY
-
 
 class SubscriptionManagementSerializer(serializers.ModelSerializer):
     user_name = serializers.SerializerMethodField()
@@ -27,16 +23,8 @@ class SubscriptionManagementSerializer(serializers.ModelSerializer):
         date_to_format = obj.trial_end if obj.status == 'trialing' else obj.current_period_end
         return date_to_format.strftime('%b %d, %Y') if date_to_format else None
     def get_payment_method(self, obj):
-        if not obj.stripe_customer_id:
-            return None
-        try:
-            payment_methods = stripe.PaymentMethod.list(customer=obj.stripe_customer_id, type="card")
-            if not payment_methods.data:
-                return None
-            card = payment_methods.data[0].card
-            return {"cardType": card.brand.title(), "transactionId": f"**** {card.last4}"}
-        except Exception:
-            return None
+        return {"cardType": "Mobile Store", "transactionId": "In-App"}
+        
     def to_representation(self, instance):
         ret = super().to_representation(instance)
         return {'id': ret['id'], 'User Name': ret['user_name'], 'Current Plan': ret['current_plan'],
@@ -58,7 +46,7 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
 
 class DashboardUserSerializer(serializers.ModelSerializer):
     plan = serializers.CharField(source='subscription.get_plan_display', read_only=True, default='Free')
-    profile_picture_url = serializers.CharField(source='profile.profile_picture_url', read_only=True) # <-- CHANGED
+    profile_picture_url = serializers.CharField(source='profile.profile_picture_url', read_only=True) 
     date = serializers.DateTimeField(source='date_joined', format='%b %d, %Y')
     name = serializers.CharField(source='username')
     class Meta:
@@ -79,7 +67,7 @@ class DashboardStorySerializer(serializers.ModelSerializer):
 
 class AdminProfileSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(source='profile.phone_number', read_only=True)
-    profile_picture_url = serializers.CharField(source='profile.profile_picture_url', read_only=True) # <-- CHANGED
+    profile_picture_url = serializers.CharField(source='profile.profile_picture_url', read_only=True) 
     class Meta:
         model = User
         fields = ['id', 'first_name', 'last_name', 'email', 'phone_number', 'profile_picture_url']

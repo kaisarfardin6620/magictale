@@ -1,22 +1,26 @@
-import stripe
-import datetime
 import logging
-import traceback
+import json
+import datetime
 from django.conf import settings
-from django.http import HttpResponse, HttpResponseBadRequest
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
+from django.contrib.auth import get_user_model
 from django.db import IntegrityError
-from .models import Subscription, ProcessedStripeEvent
-from .serializers import SubscriptionSerializer
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import AllowAny
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+from .models import Subscription, ProcessedStripeEvent
+from .serializers import SubscriptionSerializer
 
 logger = logging.getLogger(__name__)
+User = get_user_model()
 
-stripe.api_key = settings.STRIPE_SECRET_KEY
+RC_PLAN_MAPPING = {
+    "rc_entitlement_creator": "creator", 
+    "rc_entitlement_master": "master",
+}
 
 def _send_subscription_update(subscription):
     try:
@@ -28,108 +32,77 @@ def _send_subscription_update(subscription):
                 user_group_name,
                 {"type": "send_subscription_update", "status_data": serializer.data}
             )
-            logger.info(f"Sent channel update for user {subscription.user.id}")
     except Exception as e:
-        logger.error(f"Error sending channel update for user {subscription.user.id}: {e}")
-
-def _update_subscription_from_stripe_object(subscription_model, stripe_sub_object):
-    logger.info(f"Starting database update for local subscription ID {subscription_model.id} from Stripe sub {stripe_sub_object.id}")
-    subscription_model.stripe_subscription_id = stripe_sub_object.id
-    subscription_model.status = stripe_sub_object.status
-    try:
-        price = stripe_sub_object['items']['data'][0]['price']
-        if 'lookup_key' in price and price['lookup_key']:
-            subscription_model.plan = price['lookup_key']
-    except (AttributeError, IndexError, KeyError) as e:
-        logger.warning(f"Could not get plan from lookup_key on subscription {stripe_sub_object.id}: {e}")
-
-    trial_start_ts = getattr(stripe_sub_object, 'trial_start', None)
-    trial_end_ts = getattr(stripe_sub_object, 'trial_end', None)
-    current_period_end_ts = getattr(stripe_sub_object, 'current_period_end', None)
-    canceled_at_ts = getattr(stripe_sub_object, 'canceled_at', None)
-
-    subscription_model.trial_start = datetime.datetime.fromtimestamp(trial_start_ts, tz=timezone.utc) if trial_start_ts else None
-    subscription_model.trial_end = datetime.datetime.fromtimestamp(trial_end_ts, tz=timezone.utc) if trial_end_ts else None
-    subscription_model.current_period_end = datetime.datetime.fromtimestamp(current_period_end_ts, tz=timezone.utc) if current_period_end_ts else None
-    subscription_model.canceled_at = datetime.datetime.fromtimestamp(canceled_at_ts, tz=timezone.utc) if canceled_at_ts else None
-    
-    try:
-        subscription_model.save()
-        logger.info(f"SUCCESS: Subscription {subscription_model.id} for user {subscription_model.user.id} updated to status '{subscription_model.status}'")
-    except Exception as e:
-        logger.error(f"DATABASE SAVE FAILED for subscription {subscription_model.id}. Error: {e}")
-        raise e
-
-    _send_subscription_update(subscription_model)
-
-
-def handle_checkout_session_completed(session_object):
-    customer_id = session_object.get('customer')
-    subscription_id = session_object.get('subscription')
-    
-    if not customer_id or not subscription_id:
-        logger.error("Checkout session completed event is missing customer_id or subscription_id.")
-        return
-
-    try:
-        subscription_model = Subscription.objects.get(stripe_customer_id=customer_id)
-        stripe_sub = stripe.Subscription.retrieve(subscription_id)
-        _update_subscription_from_stripe_object(subscription_model, stripe_sub)
-    except Subscription.DoesNotExist:
-        logger.critical(f"FATAL: Received checkout.session.completed for customer {customer_id} but no matching subscription was found.")
-    except stripe.error.StripeError as e:
-        logger.error(f"Stripe API error while handling checkout session {session_object.id}: {e}")
-
-def handle_customer_subscription_event(subscription_object):
-    subscription_id = subscription_object.get('id')
-    if not subscription_id:
-        logger.error("customer.subscription event is missing subscription ID.")
-        return
-
-    try:
-        subscription_model = Subscription.objects.get(stripe_subscription_id=subscription_id)
-        _update_subscription_from_stripe_object(subscription_model, subscription_object)
-    except Subscription.DoesNotExist:
-        logger.warning(f"Received subscription update for {subscription_id} but no matching subscription was found.")
-    except Exception as e:
-        logger.critical(f"Unexpected error in handle_customer_subscription_event for {subscription_id}: {e}")
-
-EVENT_HANDLER_MAP = {
-    "checkout.session.completed": handle_checkout_session_completed,
-    "customer.subscription.updated": handle_customer_subscription_event,
-    "customer.subscription.deleted": handle_customer_subscription_event,
-}
+        logger.error(f"Error sending channel update: {e}")
 
 @csrf_exempt
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
-def stripe_webhook(request):
-    payload = request.body
-    sig_header = request.META.get("HTTP_STRIPE_SIGNATURE")
-    endpoint_secret = settings.STRIPE_WEBHOOK_SECRET
-    try:
-        event = stripe.Webhook.construct_event(payload, sig_header, secret=endpoint_secret)
-    except (ValueError, stripe.error.SignatureVerificationError) as e:
-        logger.error(f"Webhook signature verification failed. Error: {e}")
-        return HttpResponseBadRequest(f"Webhook error: {e}")
-
-    event_id = event.get('id')
+def revenuecat_webhook(request):
+    auth_header = request.headers.get("Authorization")
+    expected_header = settings.REVENUECAT_WEBHOOK_AUTH_HEADER
     
+    if expected_header and auth_header != expected_header:
+        logger.warning("RevenueCat Webhook: Invalid Authorization Header")
+        return HttpResponseForbidden("Invalid Authorization")
+
     try:
-        if event_id:
-            ProcessedStripeEvent.objects.create(event_id=event_id)
-    except IntegrityError:
-        logger.info(f"Webhook event {event_id} has already been processed. Ignoring.")
+        payload = json.loads(request.body)
+        event = payload.get('event', {})
+        event_id = event.get('id')
+    except json.JSONDecodeError:
+        return HttpResponseBadRequest("Invalid JSON")
+
+    if not event_id:
         return HttpResponse(status=200)
 
-    logger.info(f"Received valid Stripe event: '{event['type']}' (ID: {event.get('id')})")
-    handler = EVENT_HANDLER_MAP.get(event["type"])
-    if handler:
-        try:
-            handler(event["data"]["object"])
-        except Exception as e:
-            logger.critical(f"FATAL ERROR processing webhook {event.get('id', 'unknown')}: {e}\n{traceback.format_exc()}")
-    else:
-        logger.warning(f"Unhandled event type: '{event['type']}'")
+    try:
+        ProcessedStripeEvent.objects.create(event_id=event_id)
+    except IntegrityError:
+        logger.info(f"RevenueCat event {event_id} already processed.")
+        return HttpResponse(status=200)
+
+    app_user_id = event.get('app_user_id')
+    
+    try:
+        user_id = int(app_user_id)
+        user = User.objects.get(id=user_id)
+    except (ValueError, TypeError, User.DoesNotExist):
+        logger.error(f"RevenueCat Webhook: Could not find Django User for app_user_id='{app_user_id}'")
+        return HttpResponse(status=200)
+
+    type = event.get('type')
+    entitlement_ids = event.get('entitlement_ids', [])
+    expiration_at_ms = event.get('expiration_at_ms')
+    
+    subscription, _ = Subscription.objects.get_or_create(user=user)
+    
+    new_plan = "trial"
+    
+    if "rc_entitlement_master" in entitlement_ids:
+        new_plan = "master"
+    elif "rc_entitlement_creator" in entitlement_ids:
+        new_plan = "creator"
+        
+    if type in ['INITIAL_PURCHASE', 'RENEWAL', 'UNCANCELLATION', 'PRODUCT_CHANGE']:
+        subscription.status = 'active'
+        subscription.plan = new_plan
+        if expiration_at_ms:
+            subscription.current_period_end = datetime.datetime.fromtimestamp(expiration_at_ms / 1000.0, tz=timezone.utc)
+        
+    elif type in ['CANCELLATION']:
+        pass
+        
+    elif type in ['EXPIRATION']:
+        subscription.status = 'expired'
+        subscription.plan = 'trial'
+        subscription.current_period_end = timezone.now()
+
+    subscription.revenue_cat_id = app_user_id
+    subscription.save()
+    
+    logger.info(f"Updated subscription for User {user.id} to {subscription.plan} via RevenueCat.")
+    _send_subscription_update(subscription)
+
     return HttpResponse(status=200)

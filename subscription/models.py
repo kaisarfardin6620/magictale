@@ -13,11 +13,11 @@ class Subscription(models.Model):
         on_delete=models.CASCADE,
         related_name="subscription"
     )
-    stripe_customer_id = models.CharField(max_length=255, blank=True, null=True) # Made blank/null for trial
-    stripe_subscription_id = models.CharField(max_length=255, blank=True, null=True)
-
+    
+    revenue_cat_id = models.CharField(max_length=255, blank=True, null=True, help_text="The App User ID in RevenueCat (usually the User ID).")
+    
     plan = models.CharField(max_length=20, choices=PLAN_CHOICES)
-    status = models.CharField(max_length=50, default="inactive")  # trialing, active, canceled
+    status = models.CharField(max_length=50, default="inactive")
     trial_start = models.DateTimeField(null=True, blank=True)
     trial_end = models.DateTimeField(null=True, blank=True)
     current_period_end = models.DateTimeField(null=True, blank=True)

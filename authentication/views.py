@@ -10,6 +10,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
+from allauth.socialaccount.providers.apple.views import AppleOAuth2Adapter
+from allauth.socialaccount.providers.apple.client import AppleOAuth2Client
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from .utils import get_client_ip, send_email
 from .models import AuthToken, UserProfile, PasswordHistory, UserActivityLog
@@ -285,3 +287,52 @@ class GoogleLoginView(APIView):
         except Exception as e:
             print(f"Google authentication error: {e}")
             return Response({"detail": f"An error occurred during Google authentication. Please try again."}, status=status.HTTP_400_BAD_REQUEST)
+class AppleLoginView(APIView):
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        access_token = request.data.get("access_token")
+        id_token = request.data.get("id_token")
+        
+        if not access_token and not id_token:
+            return Response({"detail": "An access_token or id_token is required."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            adapter = AppleOAuth2Adapter(request)
+            app = adapter.get_provider().get_app(request)
+            client = AppleOAuth2Client(
+                request, app.client_id, app.secret,
+                adapter.access_token_method, adapter.access_token_url,
+                adapter.callback_url, adapter.scope
+            )
+            
+            token_payload = {}
+            if access_token:
+                token_payload["code"] = access_token
+            if id_token:
+                token_payload["id_token"] = id_token
+                
+            social_token = client.parse_token(token_payload)
+            social_token.app = app
+            
+            login = adapter.complete_login(request, app, social_token)
+            login.state = {} 
+            login.save(request)
+            user = login.user
+            
+            refresh = RefreshToken.for_user(user)
+            access_token_obj = refresh.access_token
+            access_token_obj['username'] = user.username
+            try:
+                subscription = user.subscription
+                access_token_obj['plan'] = subscription.plan
+                access_token_obj['subscription_status'] = subscription.status
+            except (AttributeError, User.subscription.RelatedObjectDoesNotExist):
+                access_token_obj['plan'] = None
+                access_token_obj['subscription_status'] = 'inactive'
+            
+            return Response({'refresh': str(refresh), 'access': str(access_token_obj)}, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f"Apple authentication error: {e}")
+            return Response({"detail": "An error occurred during Apple authentication. Please try again."}, status=status.HTTP_400_BAD_REQUEST)

@@ -12,6 +12,7 @@ from .views import (
     DeleteAccountView,
     LanguagePreferenceView,
     GoogleLoginView,
+    AppleLoginView,
     UserLanguageListView, 
 )
 
@@ -29,5 +30,5 @@ urlpatterns = [
     path('profile/language/', LanguagePreferenceView.as_view(), name='language-preference'),
     path('activity-log/', UserActivityLogAPIView.as_view(), name='activity_log'),
     path('google/', GoogleLoginView.as_view(), name='google_login'),
+    path('apple/', AppleLoginView.as_view(), name='apple_login'),
 ]
-

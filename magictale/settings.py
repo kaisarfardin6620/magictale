@@ -25,7 +25,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions', 'django.contrib.messages', 'django.contrib.staticfiles',
     'django.contrib.sites', 'corsheaders', 'rest_framework', 'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist', 'channels', 'allauth', 'allauth.account',
-    'allauth.socialaccount', 'allauth.socialaccount.providers.google', 'storages',
+    'allauth.socialaccount', 
+    'allauth.socialaccount.providers.google', 
+    'allauth.socialaccount.providers.apple',
+    'storages',
     'fcm_django', 
     'debug_toolbar',
     'authentication', 'ai', 'subscription', 'support', 'dashboard','notifications',
@@ -147,10 +150,9 @@ DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL')
 
 OPENAI_API_KEY = env("OPENAI_API_KEY")
 ELEVENLABS_API_KEY = env("ELEVENLABS_API_KEY")
-STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY")
-STRIPE_PUBLISHABLE_KEY = env("STRIPE_PUBLISHABLE_KEY")
-STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET")
 BACKEND_BASE_URL = env('BACKEND_BASE_URL', default='http://127.0.0.1:8001')
+
+REVENUECAT_WEBHOOK_AUTH_HEADER = env("REVENUECAT_WEBHOOK_AUTH_HEADER", default=None)
 
 REDIS_URL = env("REDIS_URL", default=None)
 if REDIS_URL:
@@ -177,12 +179,27 @@ ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
 SOCIALACCOUNT_AUTO_SIGNUP = True
 SOCIALACCOUNT_ADAPTER = 'authentication.adapter.CustomSocialAccountAdapter'
 ACCOUNT_EMAIL_VERIFICATION = 'optional'
+
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
         'APP': {'client_id': env('GOOGLE_CLIENT_ID'), 'secret': env('GOOGLE_CLIENT_SECRET')},
-        'SCOPE': ['profile', 'email'], 'AUTH_PARAMS': {'access_type': 'online'}, 'VERIFIED_EMAIL': True,
+        'SCOPE': ['profile', 'email'], 
+        'AUTH_PARAMS': {'access_type': 'online'}, 
+        'VERIFIED_EMAIL': True,
+    },
+    'apple': {
+        'APP': {
+            'client_id': env('APPLE_CLIENT_ID'),
+            'secret': env('APPLE_KEY_ID'),
+            'key': env('APPLE_KEY_FILE', default=None),
+            'certificate_key': env('APPLE_CERTIFICATE_CONTENT', default=None),
+            'team_id': env('APPLE_TEAM_ID'),
+        },
+        'SCOPE': ['email', 'name'],
+        'VERIFIED_EMAIL': True,
     }
 }
+
 FCM_DJANGO_SETTINGS = {
     "APP_VERBOSE_NAME": "MagicTale",
     "FCM_SERVER_KEY": env('FCM_SERVER_KEY_LEGACY', default=None),
