@@ -11,7 +11,8 @@ from rest_framework.decorators import api_view, permission_classes, authenticati
 from rest_framework.permissions import AllowAny
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
-from .models import Subscription, ProcessedStripeEvent
+
+from .models import Subscription, ProcessedWebhookEvent
 from .serializers import SubscriptionSerializer
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ def revenuecat_webhook(request):
         return HttpResponse(status=200)
 
     try:
-        ProcessedStripeEvent.objects.create(event_id=event_id)
+        ProcessedWebhookEvent.objects.create(event_id=event_id)
     except IntegrityError:
         logger.info(f"RevenueCat event {event_id} already processed.")
         return HttpResponse(status=200)
@@ -78,7 +79,7 @@ def revenuecat_webhook(request):
     
     subscription, _ = Subscription.objects.get_or_create(user=user)
     
-    new_plan = "trial"
+    new_plan = "trial" 
     
     if "rc_entitlement_master" in entitlement_ids:
         new_plan = "master"
