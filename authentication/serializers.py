@@ -25,7 +25,7 @@ class PasswordValidator:
         sha1 = hashlib.sha1(password.encode()).hexdigest().upper()
         prefix, suffix = sha1[:5], sha1[5:]
         try:
-            response = requests.get(f"https://api.pwnedpasswords.com/range/{prefix}", timeout=2)
+            response = requests.get(f"https://api.pwnedpasswords.com/range/{prefix}", timeout=2.0)
             return suffix in response.text
         except requests.RequestException:
             return False
@@ -114,7 +114,7 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         if fcm_token:
             user_agent = self.context['request'].META.get('HTTP_USER_AGENT', '').lower()
-            device_type = 'web' # Default
+            device_type = 'web' 
             if 'android' in user_agent:
                 device_type = 'android'
             elif 'iphone' in user_agent or 'ipad' in user_agent:
@@ -135,11 +135,12 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         }
 
         return data
+
 class ProfileSerializer(serializers.ModelSerializer):
     subscription_active = serializers.SerializerMethodField()
     current_plan = serializers.SerializerMethodField()
     trial_end_date = serializers.SerializerMethodField()
-    profile_picture = serializers.CharField(source='profile_picture_url', read_only=True) # <-- CHANGED
+    profile_picture = serializers.CharField(source='profile_picture_url', read_only=True) 
     class Meta:
         model = UserProfile
         fields = [

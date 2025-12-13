@@ -3,6 +3,7 @@ from .models import StoryProject, StoryPage
 from authentication.models import OnboardingStatus
 from django.conf import settings
 from django.db import transaction
+from types import SimpleNamespace
 
 class StoryPageSerializer(serializers.ModelSerializer):
     class Meta:
@@ -29,7 +30,7 @@ class StoryProjectCreateSerializer(serializers.ModelSerializer):
         try:
             subscription = user.subscription
         except (AttributeError, user.subscription.RelatedObjectDoesNotExist):
-            subscription = type('obj', (object,), {'plan': 'trial', 'status': 'trialing'})()
+            subscription = SimpleNamespace(plan='trial', status='trialing')
 
         is_master_plan = subscription.plan == 'master' and subscription.status == 'active'
         if is_master_plan:

@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 from asgiref.sync import async_to_sync
 from rest_framework import viewsets, permissions, status
@@ -55,6 +56,11 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         pk = kwargs.get('pk')
         if not pk or not pk.isdigit():
             raise NotFound("Invalid Story ID.")
+        
+        instance = self.get_object()
+        instance.read_count = F('read_count') + 1
+        instance.save(update_fields=['read_count'])
+        
         return super().retrieve(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):

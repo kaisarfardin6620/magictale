@@ -42,7 +42,7 @@ class StoryProject(models.Model):
     read_count = models.PositiveIntegerField(default=0)
     likes_count = models.PositiveIntegerField(default=0)
     shares_count = models.PositiveIntegerField(default=0)
-    model_used = models.CharField(max_length=80, default="gpt-4o-2024-08-06")
+    model_used = models.CharField(max_length=80, default=settings.AI_TEXT_MODEL)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     progress = models.PositiveSmallIntegerField(default=0)
     error = models.TextField(blank=True, default="")

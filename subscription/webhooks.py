@@ -1,17 +1,18 @@
 import stripe
 import datetime
+import logging
+import traceback
 from django.conf import settings
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
+from django.db import IntegrityError
 from .models import Subscription, ProcessedStripeEvent
 from .serializers import SubscriptionSerializer
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import AllowAny
-import logging
-import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,11 @@ def stripe_webhook(request):
         return HttpResponseBadRequest(f"Webhook error: {e}")
 
     event_id = event.get('id')
-    if event_id and ProcessedStripeEvent.objects.filter(event_id=event_id).exists():
+    
+    try:
+        if event_id:
+            ProcessedStripeEvent.objects.create(event_id=event_id)
+    except IntegrityError:
         logger.info(f"Webhook event {event_id} has already been processed. Ignoring.")
         return HttpResponse(status=200)
 
@@ -123,8 +128,6 @@ def stripe_webhook(request):
     if handler:
         try:
             handler(event["data"]["object"])
-            if event_id:
-                ProcessedStripeEvent.objects.create(event_id=event_id)
         except Exception as e:
             logger.critical(f"FATAL ERROR processing webhook {event.get('id', 'unknown')}: {e}\n{traceback.format_exc()}")
     else:

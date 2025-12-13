@@ -3,6 +3,7 @@ import os
 import json
 import io
 import requests
+import copy
 from pathlib import Path
 from django.utils import timezone
 from asgiref.sync import sync_to_async
@@ -18,7 +19,6 @@ import logging
 from .models import StoryProject, GenerationEvent, StoryPage
 from .prompts import get_story_prompts
 from elevenlabs import Voice, VoiceSettings
-from copy import deepcopy
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -174,12 +174,10 @@ def _build_cover_image_prompt(synopsis: str, project: StoryProject) -> str:
 
 @sync_to_async
 def _fetch_file_content(path):
-    # Synchronous wrapper to safely read file content
     with default_storage.open(path, 'rb') as f:
         return f.read()
 
 async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
-    # MONEY SAVER LOGIC: Check if audio already exists
     if page.audio_url and default_storage.exists(urlparse(page.audio_url).path.lstrip('/')):
         logger.info(f"Audio already exists for Page {page.index}. Downloading from storage to save credits.")
         try:
@@ -189,7 +187,6 @@ async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
         except Exception as e:
             logger.warning(f"Failed to read existing audio for page {page.index}, re-generating: {e}")
 
-    # Standard Generation Logic
     client = AsyncElevenLabs(api_key=settings.ELEVENLABS_API_KEY)
     
     try:
@@ -254,7 +251,7 @@ async def generate_text_logic(project_id: int):
     await _send(project_id, {"status": "running", "progress": 5, "message": _("Whispering to the story spirits...")})
 
     try:
-        temp_project = deepcopy(project)
+        temp_project = copy.copy(project)
         temp_project.theme = settings.THEME_ID_TO_NAME_MAP.get(project.theme, project.theme)
         system_prompt, user_prompt = get_story_prompts(temp_project)
 
