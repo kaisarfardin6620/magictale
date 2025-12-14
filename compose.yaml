@@ -24,7 +24,7 @@ services:
     restart: unless-stopped
     init: true
     env_file: ./.env
-    command: ["celery", "-A", "magictale", "worker", "--loglevel=info"]
+    command: ["celery", "-A", "magictale", "worker", "--loglevel=info", "--max-tasks-per-child=10"]
     volumes:
       - .:/app
       - ./media:/app/media
@@ -67,6 +67,9 @@ services:
     image: redis:latest
     container_name: redis-cache
     restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -77,6 +80,7 @@ services:
 
 volumes:
   static_volume:
+  redis_data:
 
 networks:
   backend:

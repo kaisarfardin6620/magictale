@@ -106,42 +106,49 @@ def _split_text_into_pages(full_text: str):
     return pages
 
 async def _generate_synopsis_and_tags_async(full_text: str):
-    openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
     synopsis_prompt = _build_synopsis_prompt(full_text)
-    try:
-        synopsis_resp = await openai_client.chat.completions.create(
-            model=DEFAULT_TEXT_MODEL, messages=[{"role": "user", "content": synopsis_prompt}],
-            response_format={"type": "json_object"}, temperature=0.5, timeout=30.0
-        )
-        metadata = json.loads(synopsis_resp.choices[0].message.content)
-        
-        if not metadata.get("title"):
-            metadata["title"] = _("Magical Story")
-        
-        if not metadata.get("synopsis") or len(metadata.get("synopsis", "")) < 20:
-            metadata["synopsis"] = _("A wonderful and magical adventure.")
-        
-        if isinstance(metadata.get("tags"), list):
-             metadata["tags"] = ", ".join(metadata["tags"])
-             
-    except Exception as e:
-        logger.error(f"Failed to generate/parse synopsis: {e}")
-        metadata = {"title": _("My Magical Story"), "synopsis": _("A magical adventure awaits!"), "tags": "Adventure, Magic"}
+    async with AsyncOpenAI(api_key=settings.OPENAI_API_KEY) as openai_client:
+        try:
+            synopsis_resp = await openai_client.chat.completions.create(
+                model=DEFAULT_TEXT_MODEL, messages=[{"role": "user", "content": synopsis_prompt}],
+                response_format={"type": "json_object"}, temperature=0.5, timeout=30.0
+            )
+            metadata = json.loads(synopsis_resp.choices[0].message.content)
+            
+            if not metadata.get("title"):
+                metadata["title"] = _("Magical Story")
+            
+            if not metadata.get("synopsis") or len(metadata.get("synopsis", "")) < 20:
+                metadata["synopsis"] = _("A wonderful and magical adventure.")
+            
+            if isinstance(metadata.get("tags"), list):
+                metadata["tags"] = ", ".join(metadata["tags"])
+                
+        except Exception as e:
+            logger.error(f"Failed to generate/parse synopsis: {e}")
+            metadata = {"title": _("My Magical Story"), "synopsis": _("A magical adventure awaits!"), "tags": "Adventure, Magic"}
     return metadata
 
 async def _generate_cover_image_async(metadata: dict, project: StoryProject):
-    openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
     theme_name = settings.THEME_ID_TO_NAME_MAP.get(project.theme, project.theme)
     image_prompt = _build_cover_image_prompt(metadata.get("synopsis", theme_name), project)
-    try:
-        image_resp = await openai_client.images.generate(
-            model=settings.AI_IMAGE_MODEL, prompt=image_prompt, n=1, size="1024x1024",
-            response_format="url", timeout=120.0
-        )
-        image_url = image_resp.data[0].url if image_resp.data else ""
-    except Exception as e:
-        logger.error(f"Failed to generate cover image: {e}")
-        image_url = ""
+    async with AsyncOpenAI(api_key=settings.OPENAI_API_KEY) as openai_client:
+        try:
+            image_resp = await openai_client.images.generate(
+                model=settings.AI_IMAGE_MODEL, prompt=image_prompt, n=1, size="1024x1024",
+                response_format="url", timeout=120.0
+            )
+            image_url = image_resp.data[0].url if image_resp.data else ""
+        except BadRequestError as e:
+            if 'content_policy_violation' in str(e):
+                logger.warning(f"Image prompt rejected by safety filter: {e}")
+                image_url = "" 
+            else:
+                logger.error(f"Failed to generate cover image: {e}")
+                image_url = ""
+        except Exception as e:
+            logger.error(f"Failed to generate cover image: {e}")
+            image_url = ""
         
     return {"image_url": image_url, "cover_image_url": image_url}
 
@@ -162,7 +169,10 @@ def _build_synopsis_prompt(story_text: str) -> str:
 def _build_cover_image_prompt(synopsis: str, project: StoryProject) -> str:
     prompt_dir = Path(__file__).parent / "prompts"
     theme_name = settings.THEME_ID_TO_NAME_MAP.get(project.theme, project.theme)
-    prompt_subject = synopsis if synopsis and len(synopsis) > 20 else theme_name
+    
+    base_subject = synopsis if synopsis and len(synopsis) > 20 else theme_name
+    
+    prompt_subject = f"{base_subject}. Scene is peaceful, cute, whimsical, G-rated, child-friendly. No violence, no weapons, no scary elements."
     
     art_style_key = project.art_style
     art_style_description = STYLE_PROMPT_ENHANCERS.get(art_style_key)
@@ -191,17 +201,16 @@ async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
     
     try:
         voice_id = project.voice or settings.ALL_NARRATOR_VOICES[0]
-        logger.info(f"Generating audio for Page {page.index} with text: '{page.text[:100]}...'")
-
+        
         audio_stream = client.text_to_speech.convert(
             voice_id=voice_id,
             text=page.text,
             model_id="eleven_flash_v2_5",
         )
         
-        audio_content = b"".join([chunk async for chunk in audio_stream])
-        
-        logger.info(f"Generated audio size for Page {page.index}: {len(audio_content)} bytes")
+        audio_content = b""
+        async for chunk in audio_stream:
+            audio_content += chunk
         
         if len(audio_content) < 100:
             logger.warning(f"Audio for page {page.index} is empty or invalid. Skipping.")
@@ -243,41 +252,41 @@ async def _cleanup_audio_chunks(project_id: int):
         logger.warning(f"Failed to clean up audio chunks for project {project_id}: {e}")
 
 async def generate_text_logic(project_id: int):
-    openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
     project = await _reload_project(project_id)
     if not project or project.status != 'running': return
 
     await _save_event(project, "stage1_start", {})
     await _send(project_id, {"status": "running", "progress": 5, "message": _("Whispering to the story spirits...")})
 
-    try:
-        temp_project = copy.copy(project)
-        temp_project.theme = settings.THEME_ID_TO_NAME_MAP.get(project.theme, project.theme)
-        system_prompt, user_prompt = get_story_prompts(temp_project)
+    async with AsyncOpenAI(api_key=settings.OPENAI_API_KEY) as openai_client:
+        try:
+            temp_project = copy.copy(project)
+            temp_project.theme = settings.THEME_ID_TO_NAME_MAP.get(project.theme, project.theme)
+            system_prompt, user_prompt = get_story_prompts(temp_project)
 
-        token_limit = LENGTH_TO_TOKENS.get(project.length, 4000)
-        
-        model_to_use = project.model_used or DEFAULT_TEXT_MODEL
-        if token_limit > 4000 and "gpt-4o" not in model_to_use:
-             model_to_use = "gpt-4o-2024-08-06"
+            token_limit = LENGTH_TO_TOKENS.get(project.length, 4000)
+            
+            model_to_use = project.model_used or DEFAULT_TEXT_MODEL
+            if token_limit > 4000 and "gpt-4o" not in model_to_use:
+                model_to_use = "gpt-4o-2024-08-06"
 
-        text_resp = await openai_client.chat.completions.create(
-            model=model_to_use,
-            messages=[{"role": "system", "content": str(system_prompt)}, {"role": "user", "content": str(user_prompt)}],
-            temperature=0.8, timeout=120.0, max_tokens=token_limit, seed=project_id
-        )
-        full_text = text_resp.choices[0].message.content.strip() if text_resp.choices else ""
-        if not full_text: raise ValueError("AI returned an empty story text.")
+            text_resp = await openai_client.chat.completions.create(
+                model=model_to_use,
+                messages=[{"role": "system", "content": str(system_prompt)}, {"role": "user", "content": str(user_prompt)}],
+                temperature=0.8, timeout=120.0, max_tokens=token_limit, seed=project_id
+            )
+            full_text = text_resp.choices[0].message.content.strip() if text_resp.choices else ""
+            if not full_text: raise ValueError("AI returned an empty story text.")
 
-        await _update_project_state(project, progress=30, text=full_text, model_used=model_to_use)
-        page_texts = _split_text_into_pages(full_text)
-        await _delete_pages(project)
-        page_objects = [await _create_page(project, i, text) for i, text in enumerate(page_texts, start=1)]
-        await _save_event(project, "stage1_done", {"pages_created": len(page_objects)})
-        
-    except Exception as e:
-        await handle_generation_failure(project_id, e)
-        raise e
+            await _update_project_state(project, progress=30, text=full_text, model_used=model_to_use)
+            page_texts = _split_text_into_pages(full_text)
+            await _delete_pages(project)
+            page_objects = [await _create_page(project, i, text) for i, text in enumerate(page_texts, start=1)]
+            await _save_event(project, "stage1_done", {"pages_created": len(page_objects)})
+            
+        except Exception as e:
+            await handle_generation_failure(project_id, e)
+            raise e
 
 async def generate_metadata_and_cover_logic(project_id: int):
     project = await _reload_project(project_id)

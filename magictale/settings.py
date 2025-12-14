@@ -279,3 +279,58 @@ ELEVENLABS_VOICE_MAP = {
 }
 
 INTERNAL_IPS = ["127.0.0.1"]
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'propagate': True,
+            'level': 'WARNING',
+        },
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'celery': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'ai': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'authentication': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'httpx': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+        },
+        'httpcore': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+        }
+    }
+}
