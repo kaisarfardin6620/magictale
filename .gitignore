@@ -12,3 +12,4 @@ migrations
 celerybeat-schedule
 certs/
 *.p8
+staticfiles
