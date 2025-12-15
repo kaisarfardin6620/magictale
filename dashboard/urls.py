@@ -1,4 +1,5 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from .views import (
     DashboardStatsAPIView,
     SubscriptionManagementView,
@@ -7,7 +8,11 @@ from .views import (
     TimezoneListView,
     LanguageListView,
     AdminProfileView,
+    UserManagementViewSet
 )
+
+router = DefaultRouter()
+router.register(r'users', UserManagementViewSet, basename='user-management')
 
 urlpatterns = [
     path('stats/', DashboardStatsAPIView.as_view(), name='dashboard-stats'),
@@ -17,4 +22,5 @@ urlpatterns = [
     path('timezones/', TimezoneListView.as_view(), name='dashboard-timezones'),
     path('languages/', LanguageListView.as_view(), name='dashboard-languages'),
     path('profile/', AdminProfileView.as_view(), name='admin-profile'),
+    path('', include(router.urls)),
 ]

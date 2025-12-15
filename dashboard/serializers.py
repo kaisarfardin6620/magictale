@@ -6,6 +6,7 @@ from .models import SiteSettings
 from django.conf import settings
 from authentication.serializers import PasswordValidator
 from authentication.models import UserProfile
+from django.utils.translation import gettext as _
 
 class SubscriptionManagementSerializer(serializers.ModelSerializer):
     user_name = serializers.SerializerMethodField()
@@ -74,7 +75,7 @@ class AdminProfileSerializer(serializers.ModelSerializer):
 
 class AdminProfileUpdateSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(source='profile.phone_number', required=False, allow_blank=True)
-    profile_picture = serializers.ImageField(source='profile.profile_picture', required=False, allow_null=True)
+    profile_picture = serializers.ImageField(required=False, allow_null=True, write_only=True)
 
     class Meta:
         model = User
@@ -83,21 +84,28 @@ class AdminProfileUpdateSerializer(serializers.ModelSerializer):
     def validate_email(self, value):
         user = self.context['request'].user
         if User.objects.filter(email__iexact=value).exclude(pk=user.pk).exists():
-            raise serializers.ValidationError("This email address is already in use by another account.")
+            raise serializers.ValidationError(_("This email address is already in use by another account."))
         return value
 
     def update(self, instance, validated_data):
-        profile_data = validated_data.pop('profile', {})
-        instance = super().update(instance, validated_data)
+        profile_data = validated_data.pop('profile', {}) 
+        profile_picture = validated_data.pop('profile_picture', None)
+
         if 'email' in validated_data:
             instance.username = validated_data['email']
-            instance.save()
-        profile = instance.profile
-        if profile_data:
-            profile.phone_number = profile_data.get('phone_number', profile.phone_number)
-            if 'profile_picture' in profile_data:
-                profile.profile_picture = profile_data.get('profile_picture', profile.profile_picture)
-            profile.save()
+        
+        instance = super().update(instance, validated_data)
+
+        profile, created = UserProfile.objects.get_or_create(user=instance)
+        
+        if 'phone_number' in profile_data:
+            profile.phone_number = profile_data['phone_number']
+            
+        if profile_picture:
+            profile.profile_picture = profile_picture
+            
+        profile.save()
+        
         return instance
 
 class AdminChangePasswordSerializer(serializers.Serializer):
@@ -107,11 +115,11 @@ class AdminChangePasswordSerializer(serializers.Serializer):
     def validate_current_password(self, value):
         user = self.context['request'].user
         if not user.check_password(value):
-            raise serializers.ValidationError("Your current password is not correct.")
+            raise serializers.ValidationError(_("Your current password is not correct."))
         return value
     
     def validate(self, data):
         user = self.context['request'].user
         if user.check_password(data['new_password']):
-            raise serializers.ValidationError({"new_password": "New password cannot be the same as the old password."})
+            raise serializers.ValidationError({"new_password": _("New password cannot be the same as the old password.")})
         return data

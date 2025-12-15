@@ -18,6 +18,7 @@ import time
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework.exceptions import AuthenticationFailed
 from notifications.tasks import create_and_send_notification_task
+from django.utils.translation import gettext as _
 
 class PasswordValidator:
     @staticmethod
@@ -33,15 +34,15 @@ class PasswordValidator:
     @staticmethod
     def validate_password_strength(password):
         if len(password) < 10:
-            raise serializers.ValidationError("Password must be at least 10 characters long.")
+            raise serializers.ValidationError(_("Password must be at least 10 characters long."))
         if not re.search(r"[A-Z]", password):
-            raise serializers.ValidationError("Password must contain at least one uppercase letter.")
+            raise serializers.ValidationError(_("Password must contain at least one uppercase letter."))
         if not re.search(r"[a-z]", password):
-            raise serializers.ValidationError("Password must contain at least one lowercase letter.")
+            raise serializers.ValidationError(_("Password must contain at least one lowercase letter."))
         if not re.search(r"\d", password):
-            raise serializers.ValidationError("Password must contain at least one digit.")
+            raise serializers.ValidationError(_("Password must contain at least one digit."))
         if not re.search(r"[!@#$%^&*()_+=\-{}[\]|\\:;\"'<,>.?/]", password):
-            raise serializers.ValidationError("Password must contain at least one special character.")
+            raise serializers.ValidationError(_("Password must contain at least one special character."))
 
 class SignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, validators=[PasswordValidator.validate_password_strength])
@@ -52,7 +53,7 @@ class SignupSerializer(serializers.ModelSerializer):
         extra_kwargs = {'password': {'write_only': True}}
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("This email is already in use.")
+            raise serializers.ValidationError(_("This email is already in use."))
         return value
     def create(self, validated_data):
         user = User.objects.create_user(
@@ -91,18 +92,18 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         fcm_token = attrs.get('fcm_token')
 
         if not email:
-            raise serializers.ValidationError('Email address is required to log in.', code='authorization')
+            raise serializers.ValidationError(_('Email address is required to log in.'), code='authorization')
 
         try:
             user = User.objects.get(email__iexact=email)
         except User.DoesNotExist:
-            raise AuthenticationFailed("No account found with this email. Please check your email and try again.")
+            raise AuthenticationFailed(_("No account found with this email. Please check your email and try again."))
 
         if not user.check_password(password):
-            raise AuthenticationFailed("The password you entered is incorrect. Please try again.")
+            raise AuthenticationFailed(_("The password you entered is incorrect. Please try again."))
 
         if not user.is_active:
-            raise AuthenticationFailed("This account is inactive. Please verify your email before logging in.")
+            raise AuthenticationFailed(_("This account is inactive. Please verify your email before logging in."))
 
         self.user = user
 
@@ -177,23 +178,23 @@ class UnifiedProfileUpdateSerializer(serializers.Serializer):
     def validate_current_password(self, value):
         user = self.context['request'].user
         if not check_password(value, user.password):
-            raise serializers.ValidationError("Your current password is not correct.")
+            raise serializers.ValidationError(_("Your current password is not correct."))
         return value
 
     def validate_new_email(self, value):
         user = self.context['request'].user
         if User.objects.filter(email=value).exclude(pk=user.pk).exists():
-            raise serializers.ValidationError("This email address is already in use by another account.")
+            raise serializers.ValidationError(_("This email address is already in use by another account."))
         return value
 
     def validate(self, data):
         if 'new_password' in data and 'current_password' not in data:
-             raise serializers.ValidationError({"current_password": "You must provide your current password to set a new one."})
+             raise serializers.ValidationError({"current_password": _("You must provide your current password to set a new one.")})
         
         if 'new_password' in data and 'current_password' in data:
             user = self.context['request'].user
             if check_password(data['new_password'], user.password):
-                raise serializers.ValidationError({"new_password": "New password cannot be the same as the old password."})
+                raise serializers.ValidationError({"new_password": _("New password cannot be the same as the old password.")})
         return data
 
     def update(self, instance, validated_data):
@@ -230,7 +231,7 @@ class PasswordResetFormSerializer(serializers.Serializer):
     confirm_password = serializers.CharField(write_only=True, required=True)
     def validate(self, data):
         if data['new_password'] != data['confirm_password']:
-            raise serializers.ValidationError("The two password fields didn't match.")
+            raise serializers.ValidationError(_("The two password fields didn't match."))
         return data
 
 class EmailChangeConfirmSerializer(serializers.Serializer):
@@ -247,5 +248,5 @@ class LanguagePreferenceSerializer(serializers.ModelSerializer):
         fields = ['language']
     def validate_language(self, value):
         if len(value) > 10:
-             raise serializers.ValidationError("Language code is too long.")
+             raise serializers.ValidationError(_("Language code is too long."))
         return value

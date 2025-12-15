@@ -31,7 +31,7 @@ INSTALLED_APPS = [
     'storages',
     'fcm_django', 
     'debug_toolbar',
-    'authentication', 'ai', 'subscription', 'support', 'dashboard','notifications',
+    'authentication', 'ai', 'subscription', 'dashboard','notifications',
 ]
 
 SITE_ID = 1
@@ -46,6 +46,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'authentication.middleware.UserLanguageMiddleware', 
     'magictale.api.middleware.APILoggingMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -173,6 +174,61 @@ CELERY_ACCEPT_CONTENT, CELERY_TASK_SERIALIZER = ['json'], 'json'
 CELERY_RESULT_SERIALIZER, CELERY_TIMEZONE = 'json', 'UTC'
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'propagate': True,
+            'level': 'WARNING',
+        },
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'celery': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'ai': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'authentication': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'httpx': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+        },
+        'httpcore': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+        }
+    }
+}
+
 ACCOUNT_LOGIN_METHODS = {'email'}
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
@@ -279,58 +335,3 @@ ELEVENLABS_VOICE_MAP = {
 }
 
 INTERNAL_IPS = ["127.0.0.1"]
-
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {message}',
-            'style': '{',
-        },
-        'simple': {
-            'format': '{levelname} {message}',
-            'style': '{',
-        },
-    },
-    'handlers': {
-        'console': {
-            'level': 'INFO',
-            'class': 'logging.StreamHandler',
-            'formatter': 'simple',
-        },
-    },
-    'loggers': {
-        'django': {
-            'handlers': ['console'],
-            'propagate': True,
-            'level': 'WARNING',
-        },
-        'django.request': {
-            'handlers': ['console'],
-            'level': 'ERROR',
-            'propagate': False,
-        },
-        'celery': {
-            'handlers': ['console'],
-            'level': 'WARNING',
-            'propagate': False,
-        },
-        'ai': {
-            'handlers': ['console'],
-            'level': 'INFO',
-        },
-        'authentication': {
-            'handlers': ['console'],
-            'level': 'INFO',
-        },
-        'httpx': {
-            'handlers': ['console'],
-            'level': 'WARNING',
-        },
-        'httpcore': {
-            'handlers': ['console'],
-            'level': 'WARNING',
-        }
-    }
-}

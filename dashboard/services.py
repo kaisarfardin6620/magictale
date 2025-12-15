@@ -14,8 +14,6 @@ def change_admin_password(user, data, context):
 
 def update_admin_profile(user, data, context):
     serializer = AdminProfileUpdateSerializer(instance=user, data=data, context=context, partial=True)
-    
     serializer.is_valid(raise_exception=True)
     serializer.save()
-    
     return user

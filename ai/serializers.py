@@ -4,6 +4,7 @@ from authentication.models import OnboardingStatus
 from django.conf import settings
 from django.db import transaction
 from types import SimpleNamespace
+from django.utils.translation import gettext as _
 
 class StoryPageSerializer(serializers.ModelSerializer):
     class Meta:
@@ -46,21 +47,21 @@ class StoryProjectCreateSerializer(serializers.ModelSerializer):
         if submitted_style and submitted_style not in used_styles:
             if len(used_styles) >= 5:
                 raise serializers.ValidationError({
-                    'art_style': "You have already used your 5 available art styles for this trial period. Please upgrade to unlock all styles."
+                    'art_style': _("You have already used your 5 available art styles for this trial period. Please upgrade to unlock all styles.")
                 })
             data['_add_art_style'] = submitted_style 
 
         if submitted_voice and submitted_voice not in used_voices:
             if len(used_voices) >= 3:
                 raise serializers.ValidationError({
-                    'voice': "You have already used your 3 available narrator voices for this trial period. Please upgrade to unlock all voices."
+                    'voice': _("You have already used your 3 available narrator voices for this trial period. Please upgrade to unlock all voices.")
                 })
             data['_add_narrator_voice'] = submitted_voice 
         
         submitted_theme = data.get('theme')
         if submitted_theme and submitted_theme not in settings.THEME_ID_TO_NAME_MAP:
              raise serializers.ValidationError({
-                'theme': f"The theme '{submitted_theme}' is not a valid option."
+                'theme': _("The theme '{submitted_theme}' is not a valid option.")
             })
 
         return data
@@ -130,7 +131,7 @@ class VariantSerializer(serializers.ModelSerializer):
     def get_audio_error(self, obj):
         error_event = obj.events.filter(kind='done', payload__warning='Audio generation failed').first()
         if error_event:
-            return "Audio generation failed due to quota or service issues."
+            return _("Audio generation failed due to quota or service issues.")
         return None
 
 class StoryProjectDetailSerializer(serializers.ModelSerializer):
@@ -166,7 +167,7 @@ class StoryProjectDetailSerializer(serializers.ModelSerializer):
     def get_audio_error(self, obj):
         error_event = obj.events.filter(kind='done', payload__warning='Audio generation failed').first()
         if error_event:
-            return "Audio generation failed due to quota or service issues."
+            return _("Audio generation failed due to quota or service issues.")
         return None
     
     def get_variants(self, obj):

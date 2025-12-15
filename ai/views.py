@@ -9,7 +9,7 @@ from rest_framework.exceptions import PermissionDenied, NotFound, ValidationErro
 from rest_framework.views import APIView
 from django.conf import settings
 from django.contrib.staticfiles.storage import staticfiles_storage
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import gettext as _
 from django.core.cache import cache
 from .tasks import start_story_generation_pipeline, generate_pdf_task, start_story_remix_pipeline
 from .models import StoryProject
@@ -55,7 +55,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         pk = kwargs.get('pk')
         if not pk or not pk.isdigit():
-            raise NotFound("Invalid Story ID.")
+            raise NotFound(_("Invalid Story ID."))
         
         instance = self.get_object()
         instance.read_count = F('read_count') + 1
@@ -67,7 +67,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         story_master_permission = IsStoryMaster()
         if request.data.get('length') == 'long':
             if not story_master_permission.has_permission(request, self):
-                raise PermissionDenied(IsStoryMaster.message)
+                raise PermissionDenied(_(IsStoryMaster.message))
         
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -119,10 +119,10 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
             
         choice_id = request.data.get('choice_id')
         if not choice_id:
-            raise ValidationError({"choice_id": "A choice_id must be provided."})
+            raise ValidationError({"choice_id": _("A choice_id must be provided.")})
 
         if not any(choice['id'] == choice_id for theme in settings.ALL_THEMES_DATA.values() for choice in theme['choices']):
-            raise ValidationError({"choice_id": "The provided choice is invalid."})
+            raise ValidationError({"choice_id": _("The provided choice is invalid.")})
 
         project.status = StoryProject.Status.RUNNING
         project.progress = 1
@@ -164,7 +164,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
     def download_pdf(self, request, pk=None):
         story_master_permission = IsStoryMaster()
         if not story_master_permission.has_permission(request, self):
-            raise PermissionDenied(IsStoryMaster.message)
+            raise PermissionDenied(_(IsStoryMaster.message))
         
         project = self.get_object()
         if project.status != StoryProject.Status.DONE:

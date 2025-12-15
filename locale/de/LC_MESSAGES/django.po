@@ -1,0 +1,37 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-12-16 01:00+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: magictale/api/renderers.py:12
+msgid "Operation successful."
+msgstr "Vorgang erfolgreich."
+
+#: magictale/api/renderers.py:19
+msgid "Resource created successfully."
+msgstr "Ressource erfolgreich erstellt."
+
+#: magictale/api/renderers.py:21
+msgid "Successfully Logged in."
+msgstr "Erfolgreich angemeldet."
+
+#: magictale/api/exceptions.py:25
+msgid "Invalid input. Please check the provided data."
+msgstr "Ungültige Eingabe. Bitte überprüfen Sie die angegebenen Daten."
+
+#: magictale/api/exceptions.py:30
+msgid "An error occurred."
+msgstr "Ein Fehler ist aufgetreten."
+
+#: magictale/api/exceptions.py:44
+msgid "A critical server error occurred. Our team has been notified."
+msgstr "Ein kritischer Serverfehler ist aufgetreten. Unser Team wurde benachrichtigt."

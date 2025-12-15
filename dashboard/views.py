@@ -33,6 +33,7 @@ from authentication.models import UserProfile
 from django.core.cache import cache
 from rest_framework.exceptions import ValidationError
 from . import services
+from django.utils.translation import gettext as _
 
 
 class DashboardStatsAPIView(APIView):
@@ -221,16 +222,16 @@ class UserManagementViewSet(viewsets.ModelViewSet):
     def approve_user(self, request, pk=None):
         user = self.get_object()
         if user.is_active:
-            return Response({'detail': 'User is already active.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': _('User is already active.')}, status=status.HTTP_400_BAD_REQUEST)
 
         user.is_active = True
         user.save()
 
         html_message = render_to_string('emails/account_approved_email.html', {'username': user.username, 'login_url': f"{settings.FRONTEND_URL}/login"})
-        plain_message = f"Congratulations! Your MagicTale account has been approved. You can now log in at {settings.FRONTEND_URL}/login"
-        send_email('Your MagicTale Account is Approved!', plain_message, [user.email], html_message=html_message)
+        plain_message = _("Congratulations! Your MagicTale account has been approved. You can now log in at {url}").format(url=f"{settings.FRONTEND_URL}/login")
+        send_email(_('Your MagicTale Account is Approved!'), plain_message, [user.email], html_message=html_message)
 
-        return Response({'status': 'User approved and notified successfully.'}, status=status.HTTP_200_OK)
+        return Response({'status': _('User approved and notified successfully.')}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='deny')
     def deny_user(self, request, pk=None):
@@ -238,9 +239,9 @@ class UserManagementViewSet(viewsets.ModelViewSet):
         email = user.email
         user.delete()
 
-        send_email('MagicTale Account Application Update', 'We regret to inform you that your account application was not approved at this time.', [email])
+        send_email(_('MagicTale Account Application Update'), _('We regret to inform you that your account application was not approved at this time.'), [email])
 
-        return Response({'status': f'User {email} has been denied and deleted.'}, status=status.HTTP_200_OK)
+        return Response({'status': _('User {email} has been denied and deleted.').format(email=email)}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='deactivate')
     def deactivate_user(self, request, pk=None):
@@ -248,4 +249,4 @@ class UserManagementViewSet(viewsets.ModelViewSet):
         user.is_active = False
         user.save()
         OutstandingToken.objects.filter(user=user).delete()
-        return Response({'status': 'User has been deactivated.'}, status=status.HTTP_200_OK)
+        return Response({'status': _('User has been deactivated.')}, status=status.HTTP_200_OK)

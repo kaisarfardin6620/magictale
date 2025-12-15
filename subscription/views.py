@@ -7,6 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import Subscription
 from .serializers import SubscriptionSerializer
+from django.utils.translation import gettext as _
 
 class SubscriptionViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
@@ -86,10 +87,10 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
                 return Response(SubscriptionSerializer(subscription).data, status=status.HTTP_200_OK)
             
             elif response.status_code == 404:
-                return Response({"detail": "User not found in RevenueCat"}, status=status.HTTP_404_NOT_FOUND)
+                return Response({"detail": _("User not found in RevenueCat")}, status=status.HTTP_404_NOT_FOUND)
             
             else:
-                return Response({"detail": "Failed to connect to RevenueCat"}, status=status.HTTP_502_BAD_GATEWAY)
+                return Response({"detail": _("Failed to connect to RevenueCat")}, status=status.HTTP_502_BAD_GATEWAY)
 
         except Exception as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

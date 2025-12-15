@@ -1,5 +1,6 @@
 import time
 from rest_framework.renderers import JSONRenderer
+from django.utils.translation import gettext as _
 
 class CustomJSONRenderer(JSONRenderer):
     def render(self, data, accepted_media_type=None, renderer_context=None):
@@ -9,7 +10,7 @@ class CustomJSONRenderer(JSONRenderer):
         if isinstance(data, dict) and 'success' in data or not (200 <= status_code < 300):
             return super().render(data, accepted_media_type, renderer_context)
 
-        message = "Operation successful."
+        message = _("Operation successful.")
         response_data = data
 
         if isinstance(data, dict) and 'message' in data:
@@ -17,17 +18,17 @@ class CustomJSONRenderer(JSONRenderer):
             response_data = data if data else None
 
         elif status_code == 201:
-            message = "Resource created successfully."
+            message = _("Resource created successfully.")
         elif status_code == 204:
             response_data = None 
         elif isinstance(data, dict) and 'token' in data:
-            message = "Successfully Logged in."
+            message = _("Successfully Logged in.")
     
 
         response_payload = {
             "success": True,
             "code": status_code,
-            "message": message,
+            "message": str(message),
             "timestamp": int(time.time()),
             "data": response_data
         }
