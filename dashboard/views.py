@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
 from rest_framework import generics, filters, status
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django_filters.rest_framework import DjangoFilterBackend
 import pytz
 from django.contrib.auth.models import User
@@ -188,6 +189,7 @@ class LanguageListView(APIView):
 
 class AdminProfileView(APIView):
     permission_classes = [IsAdminUser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser] 
 
     def get(self, request):
         UserProfile.objects.get_or_create(user=request.user)
@@ -205,6 +207,11 @@ class AdminProfileView(APIView):
 
         except ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+
+        # Force refresh to ensure the new image URL is loaded from DB
+        user.refresh_from_db()
+        if hasattr(user, 'profile'):
+            user.profile.refresh_from_db()
 
         final_serializer = AdminProfileSerializer(user)
         return Response(final_serializer.data, status=status.HTTP_200_OK)

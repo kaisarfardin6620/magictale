@@ -2,7 +2,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-12-16 01:00+0000\n"
+"POT-Creation-Date: 2025-12-15 21:13+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -12,26 +12,353 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: magictale/api/renderers.py:12
-msgid "Operation successful."
-msgstr "Operazione riuscita."
+#: ai/engine.py:119
+msgid "Magical Story"
+msgstr "Storia Magica"
 
-#: magictale/api/renderers.py:19
-msgid "Resource created successfully."
-msgstr "Risorsa creata con successo."
+#: ai/engine.py:122
+msgid "A wonderful and magical adventure."
+msgstr "Un'avventura meravigliosa e magica."
 
-#: magictale/api/renderers.py:21
-msgid "Successfully Logged in."
-msgstr "Accesso effettuato con successo."
+#: ai/engine.py:129
+msgid "My Magical Story"
+msgstr "La Mia Storia Magica"
 
-#: magictale/api/exceptions.py:25
+#: ai/engine.py:129
+msgid "A magical adventure awaits!"
+msgstr "Un'avventura magica ti aspetta!"
+
+#: ai/engine.py:259
+msgid "Whispering to the story spirits..."
+msgstr "Sussurrando agli spiriti delle storie..."
+
+#: ai/engine.py:296
+msgid "Summarizing and drawing the cover..."
+msgstr "Riassumendo e disegnando la copertina..."
+
+#: ai/engine.py:312
+msgid "Recording narration for each page..."
+msgstr "Registrando la narrazione per ogni pagina..."
+
+#: ai/engine.py:327
+msgid "Combining narration..."
+msgstr "Combinando la narrazione..."
+
+#: ai/engine.py:341
+msgid "Your story is ready (audio was unavailable)."
+msgstr "La tua storia è pronta (l'audio non era disponibile)."
+
+#: ai/engine.py:359
+msgid "Your story is complete!"
+msgstr "La tua storia è completa!"
+
+#: ai/engine.py:370
+msgid "An unexpected error occurred while creating your story. Please try again."
+msgstr "Si è verificato un errore imprevisto durante la creazione della tua storia. Riprova."
+
+#: ai/engine.py:374
+msgid "Our story-maker couldn't process this request. Please try a different theme."
+msgstr "Il nostro creatore di storie non ha potuto elaborare questa richiesta. Prova un tema diverso."
+
+#: ai/engine.py:377
+msgid "Service temporarily unavailable."
+msgstr "Servizio temporaneamente non disponibile."
+
+#: ai/engine.py:379
+msgid "System is busy. Please try again in a moment."
+msgstr "Il sistema è occupato. Riprova tra un momento."
+
+#: ai/engine.py:381
+msgid "The AI service is temporarily unavailable. Please try again."
+msgstr "Il servizio AI è temporaneamente non disponibile. Riprova."
+
+#: ai/engine.py:383
+msgid "We had trouble recording the voice narration. Please try again."
+msgstr "Abbiamo avuto problemi a registrare la narrazione vocale. Riprova."
+
+#: ai/serializers.py:50
+msgid "You have already used your 5 available art styles for this trial period. Please upgrade to unlock all styles."
+msgstr "Hai già utilizzato i tuoi 5 stili artistici disponibili per questo periodo di prova. Effettua l'aggiornamento per sbloccare tutti gli stili."
+
+#: ai/serializers.py:57
+msgid "You have already used your 3 available narrator voices for this trial period. Please upgrade to unlock all voices."
+msgstr "Hai già utilizzato le tue 3 voci narranti disponibili per questo periodo di prova. Effettua l'aggiornamento per sbloccare tutte le voci."
+
+#: ai/serializers.py:64
+#, python-brace-format
+msgid "The theme '{submitted_theme}' is not a valid option."
+msgstr "Il tema '{submitted_theme}' non è un'opzione valida."
+
+#: ai/serializers.py:134 ai/serializers.py:170
+msgid "Audio generation failed due to quota or service issues."
+msgstr "Generazione audio fallita a causa di problemi di quota o di servizio."
+
+#: ai/tasks.py:128
+msgid "Changing the story's path..."
+msgstr "Cambiando il percorso della storia..."
+
+#: ai/views.py:58
+msgid "Invalid Story ID."
+msgstr "ID Storia non valido."
+
+#: ai/views.py:87
+msgid "No stories found for this user."
+msgstr "Nessuna storia trovata per questo utente."
+
+#: ai/views.py:99
+msgid "Choices for this story's theme could not be found."
+msgstr "Le scelte per il tema di questa storia non sono state trovate."
+
+#: ai/views.py:118
+msgid "This story cannot be remixed while it is still in progress."
+msgstr "Questa storia non può essere remixata mentre è ancora in corso."
+
+#: ai/views.py:122
+msgid "A choice_id must be provided."
+msgstr "Deve essere fornito un choice_id."
+
+#: ai/views.py:125
+msgid "The provided choice is invalid."
+msgstr "La scelta fornita non è valida."
+
+#: ai/views.py:157
+msgid "This story cannot be saved as it is not complete."
+msgstr "Questa storia non può essere salvata poiché non è completa."
+
+#: ai/views.py:171
+msgid "Cannot generate PDF. Story is not yet complete."
+msgstr "Impossibile generare il PDF. La storia non è ancora completa."
+
+#: ai/views.py:176
+msgid "Your PDF is being generated. You will be notified when it is ready."
+msgstr "Il tuo PDF è in fase di generazione. Sarai avvisato quando sarà pronto."
+
+#: authentication/serializers.py:37
+msgid "Password must be at least 10 characters long."
+msgstr "La password deve essere lunga almeno 10 caratteri."
+
+#: authentication/serializers.py:39
+msgid "Password must contain at least one uppercase letter."
+msgstr "La password deve contenere almeno una lettera maiuscola."
+
+#: authentication/serializers.py:41
+msgid "Password must contain at least one lowercase letter."
+msgstr "La password deve contenere almeno una lettera minuscola."
+
+#: authentication/serializers.py:43
+msgid "Password must contain at least one digit."
+msgstr "La password deve contenere almeno una cifra."
+
+#: authentication/serializers.py:45
+msgid "Password must contain at least one special character."
+msgstr "La password deve contenere almeno un carattere speciale."
+
+#: authentication/serializers.py:56
+msgid "This email is already in use."
+msgstr "Questa email è già in uso."
+
+#: authentication/serializers.py:95
+msgid "Email address is required to log in."
+msgstr "L'indirizzo email è richiesto per accedere."
+
+#: authentication/serializers.py:100
+msgid "No account found with this email. Please check your email and try again."
+msgstr "Nessun account trovato con questa email. Controlla la tua email e riprova."
+
+#: authentication/serializers.py:103
+msgid "The password you entered is incorrect. Please try again."
+msgstr "La password inserita non è corretta. Riprova."
+
+#: authentication/serializers.py:106
+msgid "This account is inactive. Please verify your email before logging in."
+msgstr "Questo account è inattivo. Verifica la tua email prima di accedere."
+
+#: authentication/serializers.py:181 dashboard/serializers.py:118
+msgid "Your current password is not correct."
+msgstr "La tua password attuale non è corretta."
+
+#: authentication/serializers.py:187 dashboard/serializers.py:87
+msgid "This email address is already in use by another account."
+msgstr "Questa email è già utilizzata da un altro account."
+
+#: authentication/serializers.py:192
+msgid "You must provide your current password to set a new one."
+msgstr "Devi fornire la tua password attuale per impostarne una nuova."
+
+#: authentication/serializers.py:197 dashboard/serializers.py:124
+msgid "New password cannot be the same as the old password."
+msgstr "La nuova password non può essere uguale alla vecchia password."
+
+#: authentication/serializers.py:234
+msgid "The two password fields didn't match."
+msgstr "I due campi password non corrispondono."
+
+#: authentication/serializers.py:251
+msgid "Language code is too long."
+msgstr "Il codice della lingua è troppo lungo."
+
+#: authentication/views.py:78
+msgid "User created successfully. Please check your email for verification."
+msgstr "Utente creato con successo. Controlla la tua email per la verifica."
+
+#: authentication/views.py:87
+msgid "No verification token was provided."
+msgstr "Nessun token di verifica fornito."
+
+#: authentication/views.py:92 authentication/views.py:103
+msgid "This verification link is invalid or has expired."
+msgstr "Questo link di verifica non è valido o è scaduto."
+
+#: authentication/views.py:100
+msgid "Account Verified!"
+msgstr "Account Verificato!"
+
+#: authentication/views.py:100
+msgid "Your account is now active."
+msgstr "Il tuo account è ora attivo."
+
+#: authentication/views.py:114
+msgid "This account is already active."
+msgstr "Questo account è già attivo."
+
+#: authentication/views.py:121
+msgid "Verification email has been resent."
+msgstr "L'email di verifica è stata reinviata."
+
+#: authentication/views.py:123
+msgid "User not found."
+msgstr "Utente non trovato."
+
+#: authentication/views.py:145 authentication/views.py:162
+msgid "User profile not found."
+msgstr "Profilo utente non trovato."
+
+#: authentication/views.py:159
+msgid "Profile updated successfully."
+msgstr "Profilo aggiornato con successo."
+
+#: authentication/views.py:182
+msgid "If an account exists, a reset link has been sent."
+msgstr "Se un account esiste, è stato inviato un link di ripristino."
+
+#: authentication/views.py:190 authentication/views.py:194
+msgid "This password reset link is invalid or has expired."
+msgstr "Questo link di ripristino password non è valido o è scaduto."
+
+#: authentication/views.py:200 authentication/views.py:225
+msgid "This password reset session is invalid or has expired."
+msgstr "Questa sessione di ripristino password non è valida o è scaduta."
+
+#: authentication/views.py:217
+msgid "Password Reset Successful!"
+msgstr "Ripristino Password Riuscito!"
+
+#: authentication/views.py:218
+msgid "Your password has been changed. You can now log in with your new password."
+msgstr "La tua password è stata cambiata. Ora puoi accedere con la tua nuova password."
+
+#: authentication/views.py:264
+msgid "An access token from Google is required."
+msgstr "È richiesto un token di accesso da Google."
+
+#: authentication/views.py:293
+msgid "An error occurred during Google authentication. Please try again."
+msgstr "Si è verificato un errore durante l'autenticazione Google. Riprova."
+
+#: authentication/views.py:303
+msgid "An access_token or id_token is required."
+msgstr "È richiesto un access_token o id_token."
+
+#: authentication/views.py:343
+msgid "An error occurred during Apple authentication. Please try again."
+msgstr "Si è verificato un errore durante l'autenticazione Apple. Riprova."
+
+#: dashboard/views.py:231
+msgid "User is already active."
+msgstr "L'utente è già attivo."
+
+#: dashboard/views.py:237
+#, python-brace-format
+msgid "Congratulations! Your MagicTale account has been approved. You can now log in at {url}"
+msgstr "Congratulazioni! Il tuo account MagicTale è stato approvato. Ora puoi accedere su {url}"
+
+#: dashboard/views.py:238
+msgid "Your MagicTale Account is Approved!"
+msgstr "Il tuo account MagicTale è approvato!"
+
+#: dashboard/views.py:240
+msgid "User approved and notified successfully."
+msgstr "Utente approvato e notificato con successo."
+
+#: dashboard/views.py:248
+msgid "MagicTale Account Application Update"
+msgstr "Aggiornamento richiesta account MagicTale"
+
+#: dashboard/views.py:248
+msgid "We regret to inform you that your account application was not approved at this time."
+msgstr "Ci dispiace informarti che la tua richiesta di account non è stata approvata in questo momento."
+
+#: dashboard/views.py:250
+#, python-brace-format
+msgid "User {email} has been denied and deleted."
+msgstr "L'utente {email} è stato rifiutato ed eliminato."
+
+#: dashboard/views.py:258
+msgid "User has been deactivated."
+msgstr "L'utente è stato disattivato."
+
+#: magictale/api/exceptions.py:24
 msgid "Invalid input. Please check the provided data."
-msgstr "Input non valido. Si prega di controllare i dati forniti."
+msgstr "Input non valido. Controlla i dati forniti."
 
-#: magictale/api/exceptions.py:30
+#: magictale/api/exceptions.py:31
 msgid "An error occurred."
 msgstr "Si è verificato un errore."
 
-#: magictale/api/exceptions.py:44
+#: magictale/api/exceptions.py:46
 msgid "A critical server error occurred. Our team has been notified."
 msgstr "Si è verificato un errore critico del server. Il nostro team è stato informato."
+
+#: magictale/api/renderers.py:13
+msgid "Operation successful."
+msgstr "Operazione riuscita."
+
+#: magictale/api/renderers.py:21
+msgid "Resource created successfully."
+msgstr "Risorsa creata con successo."
+
+#: magictale/api/renderers.py:25
+msgid "Successfully Logged in."
+msgstr "Accesso effettuato con successo."
+
+#: magictale/settings.py:84
+msgid "English"
+msgstr "Inglese"
+
+#: magictale/settings.py:84
+msgid "Spanish"
+msgstr "Spagnolo"
+
+#: magictale/settings.py:84
+msgid "French"
+msgstr "Francese"
+
+#: magictale/settings.py:85
+msgid "German"
+msgstr "Tedesco"
+
+#: magictale/settings.py:85
+msgid "Italian"
+msgstr "Italiano"
+
+#: magictale/settings.py:85
+msgid "Portuguese"
+msgstr "Portoghese"
+
+#: subscription/views.py:90
+msgid "User not found in RevenueCat"
+msgstr "Utente non trovato in RevenueCat"
+
+#: subscription/views.py:93
+msgid "Failed to connect to RevenueCat"
+msgstr "Impossibile connettersi a RevenueCat"
