@@ -131,6 +131,8 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
             )
         refresh = self.get_token(self.user)
         data = {
+            'id': self.user.id,
+            'email': self.user.email,
             'token': str(refresh.access_token),
             'refresh_token': str(refresh)
         }
