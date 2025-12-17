@@ -89,6 +89,8 @@ class AdminProfileUpdateSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         profile_data = validated_data.pop('profile', {}) 
+        
+        has_picture_update = 'profile_picture' in validated_data
         profile_picture = validated_data.pop('profile_picture', None)
 
         if 'email' in validated_data:
@@ -101,7 +103,7 @@ class AdminProfileUpdateSerializer(serializers.ModelSerializer):
         if 'phone_number' in profile_data:
             profile.phone_number = profile_data['phone_number']
             
-        if profile_picture:
+        if has_picture_update:
             profile.profile_picture = profile_picture
             
         profile.save()

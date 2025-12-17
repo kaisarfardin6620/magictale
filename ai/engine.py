@@ -237,15 +237,12 @@ async def _cleanup_audio_chunks(project_id: int):
     try:
         @sync_to_async
         def delete_chunks():
-            try:
-                if not hasattr(default_storage, 'listdir'):
-                    return 
-                dirs, files = default_storage.listdir('audio/chunks')
-                for filename in files:
-                    if f"story_{project_id}_page_" in filename:
-                        default_storage.delete(Path('audio/chunks') / filename)
-            except Exception:
-                pass
+            for i in range(1, 60):
+                filename = f"audio/chunks/story_{project_id}_page_{i}.mp3"
+                try:
+                    default_storage.delete(filename)
+                except Exception:
+                    pass
         await delete_chunks()
         logger.info(f"Cleaned up audio chunks for project {project_id}")
     except Exception as e:

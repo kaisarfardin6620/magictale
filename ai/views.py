@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Count
 from django.utils import timezone
 from asgiref.sync import async_to_sync
 from rest_framework import viewsets, permissions, status
@@ -31,7 +31,9 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         queryset = (
             super().get_queryset()
             .filter(user=self.request.user)
-            .select_related('user') 
+            .select_related('user', 'onboarding') 
+            .prefetch_related('variants')
+            .annotate(page_count_annotated=Count('pages'))
             .order_by("-created_at")
         )
         if self.action == 'list':

@@ -27,11 +27,9 @@ class UserLanguageMiddleware:
                 if user_lang:
                     translation.activate(user_lang)
                     request.LANGUAGE_CODE = user_lang
-                    print(f"DEBUG: Language forced to '{user_lang}' for user {current_user.email}")
             except Exception as e:
                 pass
 
         response = self.get_response(request)
-        
         
         return response

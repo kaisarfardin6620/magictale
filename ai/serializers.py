@@ -152,7 +152,7 @@ class StoryProjectDetailSerializer(serializers.ModelSerializer):
             "audio_duration_seconds", "audio_error", "page_count", "variants"
         ]
     def get_page_count(self, obj):
-        return obj.pages.count()
+        return getattr(obj, 'page_count_annotated', obj.pages.count())
         
     def get_image_url(self, obj):
         return obj.image_url if obj.image_url else None

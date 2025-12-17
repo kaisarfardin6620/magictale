@@ -117,7 +117,7 @@ class DashboardStatsAPIView(APIView):
         return Response(data)
     def _calculate_change(self, old, new):
         if old <= 0: return 100.0 if new > 0 else 0.0
-        return round((new / old) * 100, 2)
+        return round(((new - old) / old) * 100, 2)
 
 class SubscriptionManagementView(generics.ListAPIView):
     permission_classes = [IsAdminUser]
@@ -192,8 +192,10 @@ class AdminProfileView(APIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser] 
 
     def get(self, request):
-        UserProfile.objects.get_or_create(user=request.user)
-        serializer = AdminProfileSerializer(request.user)
+        user = User.objects.select_related('profile').get(id=request.user.id)
+        UserProfile.objects.get_or_create(user=user)
+        user = User.objects.select_related('profile').get(id=request.user.id)
+        serializer = AdminProfileSerializer(user)
         return Response(serializer.data)
 
     def put(self, request):
@@ -208,12 +210,9 @@ class AdminProfileView(APIView):
         except ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
 
-        # Force refresh to ensure the new image URL is loaded from DB
-        user.refresh_from_db()
-        if hasattr(user, 'profile'):
-            user.profile.refresh_from_db()
+        updated_user = User.objects.select_related('profile').get(id=user.id)
 
-        final_serializer = AdminProfileSerializer(user)
+        final_serializer = AdminProfileSerializer(updated_user)
         return Response(final_serializer.data, status=status.HTTP_200_OK)
 
 

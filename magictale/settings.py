@@ -31,7 +31,7 @@ INSTALLED_APPS = [
     'storages',
     'fcm_django', 
     'debug_toolbar',
-    'authentication', 'ai', 'subscription', 'dashboard','notifications',
+    'authentication', 'ai', 'subscription', 'dashboard','notifications','support',
 ]
 
 SITE_ID = 1
