@@ -90,7 +90,10 @@ def revenuecat_webhook(request):
         subscription.status = 'active'
         subscription.plan = new_plan
         if expiration_at_ms:
-            subscription.current_period_end = datetime.datetime.fromtimestamp(expiration_at_ms / 1000.0, tz=timezone.utc)
+            subscription.current_period_end = datetime.datetime.fromtimestamp(
+                expiration_at_ms / 1000.0, 
+                tz=datetime.timezone.utc
+            )
         
     elif type in ['CANCELLATION']:
         pass
