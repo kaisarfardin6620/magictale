@@ -4,7 +4,7 @@ from .views import SubscriptionViewSet
 from .webhooks import revenuecat_webhook
 
 router = DefaultRouter()
-router.register(r"subscriptions", SubscriptionViewSet, basename="subscriptions")
+router.register(r"", SubscriptionViewSet, basename="subscriptions")
 
 urlpatterns = [
     path("", include(router.urls)),

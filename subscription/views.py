@@ -29,8 +29,7 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
         
         headers = {
             "Authorization": f"Bearer {settings.REVENUECAT_API_KEY}",
-            "Content-Type": "application/json",
-            "X-Platform": "android"
+            "Content-Type": "application/json"
         }
         
         url = f"https://api.revenuecat.com/v1/subscribers/{app_user_id}"
@@ -47,10 +46,9 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
                 
                 active_plan = None
                 max_expiration = None
-
-                if "rc_entitlement_master" in entitlements:
-                    ent = entitlements["rc_entitlement_master"]
-                    expires_date_str = ent.get("expires_date")
+                ent_master = entitlements.get("pro max") or entitlements.get("pro_max")
+                if ent_master:
+                    expires_date_str = ent_master.get("expires_date")
                     if expires_date_str:
                         expires_date = datetime.datetime.fromisoformat(expires_date_str.replace('Z', '+00:00'))
                         if expires_date > timezone.now():
@@ -59,16 +57,17 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
                     else:
                         active_plan = "master"
 
-                if not active_plan and "rc_entitlement_creator" in entitlements:
-                    ent = entitlements["rc_entitlement_creator"]
-                    expires_date_str = ent.get("expires_date")
-                    if expires_date_str:
-                        expires_date = datetime.datetime.fromisoformat(expires_date_str.replace('Z', '+00:00'))
-                        if expires_date > timezone.now():
+                if not active_plan:
+                    ent_creator = entitlements.get("pro")
+                    if ent_creator:
+                        expires_date_str = ent_creator.get("expires_date")
+                        if expires_date_str:
+                            expires_date = datetime.datetime.fromisoformat(expires_date_str.replace('Z', '+00:00'))
+                            if expires_date > timezone.now():
+                                active_plan = "creator"
+                                max_expiration = expires_date
+                        else:
                             active_plan = "creator"
-                            max_expiration = expires_date
-                    else:
-                        active_plan = "creator"
 
                 if active_plan:
                     subscription.status = 'active'

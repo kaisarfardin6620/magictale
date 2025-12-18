@@ -18,11 +18,6 @@ from .serializers import SubscriptionSerializer
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
-RC_PLAN_MAPPING = {
-    "rc_entitlement_creator": "creator", 
-    "rc_entitlement_master": "master",
-}
-
 def _send_subscription_update(subscription):
     try:
         channel_layer = get_channel_layer()
@@ -81,11 +76,10 @@ def revenuecat_webhook(request):
     
     new_plan = "trial" 
     
-    if "rc_entitlement_master" in entitlement_ids:
+    if "pro max" in entitlement_ids or "pro_max" in entitlement_ids:
         new_plan = "master"
-    elif "rc_entitlement_creator" in entitlement_ids:
+    elif "pro" in entitlement_ids:
         new_plan = "creator"
-        
     if type in ['INITIAL_PURCHASE', 'RENEWAL', 'UNCANCELLATION', 'PRODUCT_CHANGE']:
         subscription.status = 'active'
         subscription.plan = new_plan
@@ -106,7 +100,7 @@ def revenuecat_webhook(request):
     subscription.revenue_cat_id = app_user_id
     subscription.save()
     
-    logger.info(f"Updated subscription for User {user.id} to {subscription.plan} via RevenueCat.")
+    logger.info(f"Updated subscription for User {user.id} to {subscription.plan} via RevenueCat (Entitlements: {entitlement_ids}).")
     _send_subscription_update(subscription)
 
     return HttpResponse(status=200)
