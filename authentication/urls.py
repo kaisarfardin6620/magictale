@@ -15,6 +15,7 @@ from .views import (
     AppleLoginView,
     UserLanguageListView, 
 )
+from rest_framework_simplejwt.views import TokenBlacklistView
 
 urlpatterns = [
     path('signup/', SignupAPIView.as_view(), name='signup'),
@@ -31,4 +32,5 @@ urlpatterns = [
     path('activity-log/', UserActivityLogAPIView.as_view(), name='activity_log'),
     path('google/', GoogleLoginView.as_view(), name='google_login'),
     path('apple/', AppleLoginView.as_view(), name='apple_login'),
+    path('logout/', TokenBlacklistView.as_view(), name='token_blacklist'),
 ]

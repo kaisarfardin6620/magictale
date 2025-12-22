@@ -109,10 +109,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
                 "id": choice['id'],
                 "name": choice['name'],
                 "description": choice['description'],
-                "image_url": request.build_absolute_uri(
-                    staticfiles_storage.url(f"images/themes/{choice['image_file']}")
-                )
-            })
+                "image_url": request.build_absolute_uri(staticfiles_storage.url(f"images/themes/{choice['image_file']}"))})
         return Response(choices_with_urls)
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated, IsOwner, IsStoryMaster])
