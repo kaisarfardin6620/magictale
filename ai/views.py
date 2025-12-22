@@ -38,7 +38,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
             .order_by("-created_at")
         )
         if self.action == 'list':
-            return queryset.filter(is_saved=True, parent_project__isnull=True)
+            return queryset.filter(is_saved=True)
         return queryset
 
     def get_serializer_class(self):
@@ -164,9 +164,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         project.is_saved = True
         project.save(update_fields=['is_saved'])
         
-        project.variants.update(is_saved=True)
-        
-        return Response({"message": _("Story and all variants saved successfully.")}, status=status.HTTP_200_OK)
+        return Response({"message": _("Story saved to library.")}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='download-pdf')
     def download_pdf(self, request, pk=None):
