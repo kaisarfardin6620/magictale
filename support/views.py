@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from django.shortcuts import get_object_or_404
 from .models import UserReport, LegalDocument
 from .serializers import UserReportSerializer, LegalDocumentSerializer
 from rest_framework.permissions import IsAdminUser
@@ -36,48 +37,17 @@ class UserReportViewSet(viewsets.ModelViewSet):
 class LegalDocumentView(APIView):
     permission_classes = [permissions.AllowAny]
 
-    def get(self, request):
-        documents = LegalDocument.objects.all()
-        serializer = LegalDocumentSerializer(documents, many=True)
+    def get(self, request, doc_type):
+        document = get_object_or_404(LegalDocument, doc_type=doc_type)
+        serializer = LegalDocumentSerializer(document)
         return Response(serializer.data)
 
 class AdminLegalDocumentView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
-
-    def post(self, request):
-        doc_type = request.data.get('doc_type')
-        try:
-            document = LegalDocument.objects.get(doc_type=doc_type)
-            serializer = LegalDocumentSerializer(document, data=request.data, partial=True)
-        except LegalDocument.DoesNotExist:
-            serializer = LegalDocumentSerializer(data=request.data)
-
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-class LegalDocumentView(APIView):
-    """
-    Public Endpoint: Users GET this to read Terms/Privacy.
-    """
-    permission_classes = [permissions.AllowAny]
-
-    def get(self, request):
-        documents = LegalDocument.objects.all()
-        serializer = LegalDocumentSerializer(documents, many=True)
-        return Response(serializer.data)
-
-class AdminLegalDocumentView(APIView):
-    """
-    Admin Endpoint: POST here to Create OR Update Terms/Privacy.
-    """
     permission_classes = [permissions.IsAuthenticated, IsAdminUser]
 
     def post(self, request):
         doc_type = request.data.get('doc_type')
         
-        # Validate doc_type
         if doc_type not in ['privacy_policy', 'terms_conditions']:
             return Response(
                 {"error": "Invalid doc_type. Must be 'privacy_policy' or 'terms_conditions'."}, 
@@ -85,11 +55,9 @@ class AdminLegalDocumentView(APIView):
             )
 
         try:
-            # Try to find existing document to UPDATE
             document = LegalDocument.objects.get(doc_type=doc_type)
             serializer = LegalDocumentSerializer(document, data=request.data, partial=True)
         except LegalDocument.DoesNotExist:
-            # If not found, CREATE new
             serializer = LegalDocumentSerializer(data=request.data)
 
         if serializer.is_valid():

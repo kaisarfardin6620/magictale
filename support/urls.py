@@ -7,6 +7,6 @@ router.register(r'reports', UserReportViewSet, basename='user-reports')
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('legal/public/', LegalDocumentView.as_view(), name='legal-docs-public'),
+    path('legal/public/<str:doc_type>/', LegalDocumentView.as_view(), name='legal-docs-public'),
     path('legal/manage/', AdminLegalDocumentView.as_view(), name='legal-docs-manage'),
 ]
