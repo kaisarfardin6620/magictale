@@ -16,6 +16,7 @@ from .engine import (
     generate_audio_logic,
     handle_generation_failure,
     _create_variant_project,
+    LENGTH_TO_TOKENS
 )
 from django.conf import settings
 from pathlib import Path
@@ -71,7 +72,6 @@ def generate_text_task(self, project_id: int):
     async_to_sync(generate_text_logic)(project_id)
     print(f"Finished STAGE 1: TEXT for project {project_id}")
     
-    # Trigger the check for variants
     generate_variants_task.delay(project_id)
     
     return project_id 
@@ -81,7 +81,6 @@ def generate_variants_task(project_id: int):
     try:
         project = StoryProject.objects.select_related('user__subscription').get(id=project_id)
         
-        # --- STRICT CHECK & DEBUGGING ---
         user_plan = project.user.subscription.plan
         user_status = project.user.subscription.status
         
@@ -98,7 +97,6 @@ def generate_variants_task(project_id: int):
         if project.parent_project:
             print(f"STOP: This is already a variant project.")
             return
-        # --------------------------------
 
         print(f"START: Fan-out generation for project {project_id} (Master Plan Validated)")
         
@@ -149,11 +147,14 @@ async def remix_text_logic(project_id: int, choice_id: str):
         choice_description=choice_description
     )
     
+    token_limit = LENGTH_TO_TOKENS.get(project.length, 1000)
+
     text_resp = await openai_client.chat.completions.create(
         model=project.model_used or "gpt-4o-2024-08-06",
         messages=[{"role": "user", "content": remix_prompt}],
         temperature=0.8,
-        timeout=90.0
+        timeout=90.0,
+        max_tokens=token_limit
     )
     
     new_second_half = text_resp.choices[0].message.content.strip() if text_resp.choices else ""

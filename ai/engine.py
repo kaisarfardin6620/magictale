@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 
 LENGTH_TO_TOKENS = {
     "short": 100, 
-    "medium": 300, 
-    "long": 500, 
+    "medium": 200, 
+    "long": 300, 
 }
 DEFAULT_TEXT_MODEL = getattr(settings, "AI_TEXT_MODEL", "gpt-4o-2024-08-06")
 

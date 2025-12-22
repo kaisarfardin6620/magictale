@@ -16,6 +16,7 @@ from .models import StoryProject
 from .serializers import (
     StoryProjectCreateSerializer,
     StoryProjectDetailSerializer,
+    StoryProjectListSerializer,
 )
 from authentication.permissions import HasActiveSubscription, IsOwner, IsStoryMaster
 from .throttling import SubscriptionBasedThrottle
@@ -43,6 +44,8 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == "create":
             return StoryProjectCreateSerializer
+        if self.action == "list":
+            return StoryProjectListSerializer
         return super().get_serializer_class()
 
     def perform_create(self, serializer):
@@ -157,10 +160,13 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         project = self.get_object()
         if project.status != StoryProject.Status.DONE:
             raise ValidationError(_("This story cannot be saved as it is not complete."))
+        
         project.is_saved = True
         project.save(update_fields=['is_saved'])
-        serializer = self.get_serializer(project)
-        return Response(serializer.data)
+        
+        project.variants.update(is_saved=True)
+        
+        return Response({"message": _("Story and all variants saved successfully.")}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='download-pdf')
     def download_pdf(self, request, pk=None):
@@ -183,7 +189,7 @@ class GenerationOptionsView(APIView):
     permission_classes = [permissions.IsAuthenticated, HasActiveSubscription]
 
     def get(self, request):
-        cache_key = "generation_options_all_v2" 
+        cache_key = "generation_options_all_v3" 
         cached_data = cache.get(cache_key)
 
         if cached_data:
@@ -200,13 +206,17 @@ class GenerationOptionsView(APIView):
         
         art_styles_response = []
         for style in settings.ALL_ART_STYLES_DATA:
+            image_path = staticfiles_storage.url(f"images/art_styles/{style['image_file']}")
+            if not image_path.startswith("http"):
+                full_url = f"{settings.BACKEND_BASE_URL}{image_path}"
+            else:
+                full_url = image_path
+
             art_styles_response.append({
                 "id": style['id'],
                 "name": style['name'],
                 "description": style['description'],
-                "image_url": request.build_absolute_uri(
-                    staticfiles_storage.url(f"images/art_styles/{style['image_file']}")
-                )
+                "image_url": full_url
             })
 
         voices_response = [

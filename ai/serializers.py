@@ -173,3 +173,24 @@ class StoryProjectDetailSerializer(serializers.ModelSerializer):
     def get_variants(self, obj):
         variants = obj.variants.all()
         return VariantSerializer(variants, many=True).data
+
+class StoryProjectListSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+    audio_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StoryProject
+        fields = [
+            "id", "user", "title", "child_name", "theme", "art_style", 
+            "status", "is_saved", "created_at", "image_url", "audio_url", "synopsis"
+        ]
+
+    def get_image_url(self, obj):
+        return obj.image_url if obj.image_url else None
+
+    def get_audio_url(self, obj):
+        if obj.audio_url:
+            if settings.USE_S3_STORAGE:
+                return obj.audio_url
+            return f"{settings.BACKEND_BASE_URL}{obj.audio_url}"
+        return None
