@@ -131,26 +131,57 @@ async def _generate_synopsis_and_tags_async(full_text: str):
 
 async def _generate_cover_image_async(metadata: dict, project: StoryProject):
     theme_name = settings.THEME_ID_TO_NAME_MAP.get(project.theme, project.theme)
-    image_prompt = _build_cover_image_prompt(metadata.get("synopsis", theme_name), project)
+    image_prompt = _build_cover_image_prompt(
+        metadata.get("synopsis", theme_name),
+        project
+    )
+
+    image_url_db = ""
+
     async with AsyncOpenAI(api_key=settings.OPENAI_API_KEY) as openai_client:
         try:
             image_resp = await openai_client.images.generate(
-                model=settings.AI_IMAGE_MODEL, prompt=image_prompt, n=1, size="1024x1024",
-                response_format="url", timeout=120.0
+                model=settings.AI_IMAGE_MODEL,
+                prompt=image_prompt,
+                n=1,
+                size="1024x1024",
+                response_format="url",
+                timeout=120.0
             )
-            image_url = image_resp.data[0].url if image_resp.data else ""
+
+            temp_url = image_resp.data[0].url if image_resp.data else ""
+
+            if temp_url:
+                response = requests.get(temp_url, timeout=30)
+
+                if response.status_code == 200:
+                    file_name = f"covers/story_{project.id}_cover.png"
+
+                    saved_path = await sync_to_async(default_storage.save)(
+                        file_name,
+                        ContentFile(response.content)
+                    )
+
+                    image_url_db = await sync_to_async(default_storage.url)(saved_path)
+                else:
+                    logger.error(
+                        f"Failed to download image from OpenAI. Status: {response.status_code}"
+                    )
+
         except BadRequestError as e:
-            if 'content_policy_violation' in str(e):
+            if "content_policy_violation" in str(e):
                 logger.warning(f"Image prompt rejected by safety filter: {e}")
-                image_url = "" 
             else:
                 logger.error(f"Failed to generate cover image: {e}")
-                image_url = ""
+
         except Exception as e:
             logger.error(f"Failed to generate cover image: {e}")
-            image_url = ""
-        
-    return {"image_url": image_url, "cover_image_url": image_url}
+
+    return {
+        "image_url": image_url_db,
+        "cover_image_url": image_url_db
+    }
+
 
 def _build_synopsis_prompt(story_text: str) -> str:
     return (
