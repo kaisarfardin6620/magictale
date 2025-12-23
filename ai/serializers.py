@@ -119,7 +119,11 @@ class VariantSerializer(serializers.ModelSerializer):
         ]
 
     def get_image_url(self, obj):
-        return obj.image_url if obj.image_url else None
+        if obj.image_url:
+            if settings.USE_S3_STORAGE or obj.image_url.startswith("http"):
+                return obj.image_url
+            return f"{settings.BACKEND_BASE_URL}{obj.image_url}"
+        return None
 
     def get_audio_url(self, obj):
         if obj.audio_url:
@@ -155,7 +159,11 @@ class StoryProjectDetailSerializer(serializers.ModelSerializer):
         return getattr(obj, 'page_count_annotated', obj.pages.count())
         
     def get_image_url(self, obj):
-        return obj.image_url if obj.image_url else None
+        if obj.image_url:
+            if settings.USE_S3_STORAGE or obj.image_url.startswith("http"):
+                return obj.image_url
+            return f"{settings.BACKEND_BASE_URL}{obj.image_url}"
+        return None
 
     def get_audio_url(self, obj):
         if obj.audio_url:
@@ -186,7 +194,11 @@ class StoryProjectListSerializer(serializers.ModelSerializer):
         ]
 
     def get_image_url(self, obj):
-        return obj.image_url if obj.image_url else None
+        if obj.image_url:
+            if settings.USE_S3_STORAGE or obj.image_url.startswith("http"):
+                return obj.image_url
+            return f"{settings.BACKEND_BASE_URL}{obj.image_url}"
+        return None
 
     def get_audio_url(self, obj):
         if obj.audio_url:

@@ -131,57 +131,40 @@ async def _generate_synopsis_and_tags_async(full_text: str):
 
 async def _generate_cover_image_async(metadata: dict, project: StoryProject):
     theme_name = settings.THEME_ID_TO_NAME_MAP.get(project.theme, project.theme)
-    image_prompt = _build_cover_image_prompt(
-        metadata.get("synopsis", theme_name),
-        project
-    )
-
+    image_prompt = _build_cover_image_prompt(metadata.get("synopsis", theme_name), project)
+    
     image_url_db = ""
 
     async with AsyncOpenAI(api_key=settings.OPENAI_API_KEY) as openai_client:
         try:
             image_resp = await openai_client.images.generate(
-                model=settings.AI_IMAGE_MODEL,
-                prompt=image_prompt,
-                n=1,
-                size="1024x1024",
-                response_format="url",
-                timeout=120.0
+                model=settings.AI_IMAGE_MODEL, prompt=image_prompt, n=1, size="1024x1024",
+                response_format="url", timeout=120.0
             )
-
             temp_url = image_resp.data[0].url if image_resp.data else ""
 
             if temp_url:
-                response = requests.get(temp_url, timeout=30)
-
-                if response.status_code == 200:
-                    file_name = f"covers/story_{project.id}_cover.png"
-
-                    saved_path = await sync_to_async(default_storage.save)(
-                        file_name,
-                        ContentFile(response.content)
-                    )
-
-                    image_url_db = await sync_to_async(default_storage.url)(saved_path)
-                else:
-                    logger.error(
-                        f"Failed to download image from OpenAI. Status: {response.status_code}"
-                    )
+                def save_image():
+                    resp = requests.get(temp_url)
+                    if resp.status_code == 200:
+                        file_name = f"covers/story_{project.id}_cover.png"
+                        if default_storage.exists(file_name):
+                            default_storage.delete(file_name)
+                        saved_path = default_storage.save(file_name, ContentFile(resp.content))
+                        return default_storage.url(saved_path)
+                    return ""
+                
+                image_url_db = await sync_to_async(save_image)()
 
         except BadRequestError as e:
-            if "content_policy_violation" in str(e):
+            if 'content_policy_violation' in str(e):
                 logger.warning(f"Image prompt rejected by safety filter: {e}")
             else:
                 logger.error(f"Failed to generate cover image: {e}")
-
         except Exception as e:
             logger.error(f"Failed to generate cover image: {e}")
-
-    return {
-        "image_url": image_url_db,
-        "cover_image_url": image_url_db
-    }
-
+        
+    return {"image_url": image_url_db, "cover_image_url": image_url_db}
 
 def _build_synopsis_prompt(story_text: str) -> str:
     return (
@@ -268,12 +251,13 @@ async def _cleanup_audio_chunks(project_id: int):
     try:
         @sync_to_async
         def delete_chunks():
-            for i in range(1, 60):
-                filename = f"audio/chunks/story_{project_id}_page_{i}.mp3"
-                try:
-                    default_storage.delete(filename)
-                except Exception:
-                    pass
+            try:
+                for i in range(1, 100):
+                    filename = f"audio/chunks/story_{project_id}_page_{i}.mp3"
+                    if default_storage.exists(filename):
+                        default_storage.delete(filename)
+            except Exception:
+                pass
         await delete_chunks()
         logger.info(f"Cleaned up audio chunks for project {project_id}")
     except Exception as e:
