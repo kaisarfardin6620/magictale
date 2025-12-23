@@ -172,16 +172,16 @@ class UnifiedProfileUpdateSerializer(serializers.Serializer):
     last_name = serializers.CharField(max_length=150, required=False)
     new_email = serializers.EmailField(required=False, write_only=True)
     new_password = serializers.CharField(style={'input_type': 'password'}, write_only=True, required=False, validators=[PasswordValidator.validate_password_strength])
-    current_password = serializers.CharField(style={'input_type': 'password'}, write_only=True, required=False)
+    # current_password = serializers.CharField(style={'input_type': 'password'}, write_only=True, required=False)
     profile_picture = serializers.ImageField(required=False, allow_null=True)
     phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
     allow_push_notifications = serializers.BooleanField(required=False)
 
-    def validate_current_password(self, value):
-        user = self.context['request'].user
-        if not check_password(value, user.password):
-            raise serializers.ValidationError(_("Your current password is not correct."))
-        return value
+    # def validate_current_password(self, value):
+    #     user = self.context['request'].user
+    #     if not check_password(value, user.password):
+    #         raise serializers.ValidationError(_("Your current password is not correct."))
+    #     return value
 
     def validate_new_email(self, value):
         user = self.context['request'].user
@@ -190,10 +190,11 @@ class UnifiedProfileUpdateSerializer(serializers.Serializer):
         return value
 
     def validate(self, data):
-        if 'new_password' in data and 'current_password' not in data:
-             raise serializers.ValidationError({"current_password": _("You must provide your current password to set a new one.")})
+        # if 'new_password' in data and 'current_password' not in data:
+        #      raise serializers.ValidationError({"current_password": _("You must provide your current password to set a new one.")})
         
-        if 'new_password' in data and 'current_password' in data:
+        # if 'new_password' in data and 'current_password' in data:
+        if 'new_password' in data:
             user = self.context['request'].user
             if check_password(data['new_password'], user.password):
                 raise serializers.ValidationError({"new_password": _("New password cannot be the same as the old password.")})

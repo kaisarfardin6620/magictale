@@ -111,14 +111,14 @@ class AdminProfileUpdateSerializer(serializers.ModelSerializer):
         return instance
 
 class AdminChangePasswordSerializer(serializers.Serializer):
-    current_password = serializers.CharField(write_only=True, required=True)
+    # current_password = serializers.CharField(write_only=True, required=True)
     new_password = serializers.CharField(write_only=True, required=True, validators=[PasswordValidator.validate_password_strength])
     
-    def validate_current_password(self, value):
-        user = self.context['request'].user
-        if not user.check_password(value):
-            raise serializers.ValidationError(_("Your current password is not correct."))
-        return value
+    # def validate_current_password(self, value):
+    #     user = self.context['request'].user
+    #     if not user.check_password(value):
+    #         raise serializers.ValidationError(_("Your current password is not correct."))
+    #     return value
     
     def validate(self, data):
         user = self.context['request'].user

@@ -202,7 +202,8 @@ class AdminProfileView(APIView):
         user = request.user
 
         try:
-            if 'new_password' in request.data and 'current_password' in request.data:
+            # if 'new_password' in request.data and 'current_password' in request.data:
+            if 'new_password' in request.data:
                 services.change_admin_password(user, data=request.data, context={'request': request})
 
             services.update_admin_profile(user, data=request.data, context={'request': request})
