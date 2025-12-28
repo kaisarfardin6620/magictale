@@ -1,8 +1,6 @@
 import openai
 from celery import shared_task, chain, group
 from asgiref.sync import async_to_sync
-from weasyprint import HTML
-from django.template.loader import render_to_string
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from .models import StoryProject
@@ -369,40 +367,6 @@ def start_story_remix_pipeline(project_id: int, choice_id: str):
     )
     print(f"Dispatching REMIX pipeline for project {project_id}")
     pipeline.apply_async()
-
-@shared_task(bind=True)
-def generate_pdf_task(self, project_id: int, base_url: str):
-    print(f"Starting PDF generation for project {project_id}")
-    try:
-        project = StoryProject.objects.get(id=project_id)
-        context = {"project": project}
-        html_string = render_to_string("ai/story_pdf_template.html", context)
-        
-        pdf_file_bytes = HTML(string=html_string, base_url=base_url).write_pdf() 
-        
-        file_path = f'pdfs/story_{project.id}_{project.child_name}.pdf'
-        default_storage.save(file_path, ContentFile(pdf_file_bytes))
-        relative_pdf_url = default_storage.url(file_path)
-        
-        if relative_pdf_url.startswith('http'):
-            full_pdf_url = relative_pdf_url
-        else:
-            full_pdf_url = f"{base_url}{relative_pdf_url}"
-        
-        print(f"Successfully generated and saved PDF for project {project_id} at {full_pdf_url}")
-        notification_data = {"type": "pdf_ready", "story_id": project.id, "pdf_url": full_pdf_url}
-        create_and_send_notification_task.delay(
-            project.user.id,
-            "PDF Ready for Download",
-            f"Your PDF for the story '{project.child_name}' is ready.",
-            data=notification_data
-        )
-        
-    except StoryProject.DoesNotExist:
-        print(f"Error generating PDF: StoryProject with id={project_id} not found.")
-    except Exception as e:
-        print(f"An unexpected error occurred during PDF generation for project {project_id}: {e}")
-        raise
 
 @shared_task
 def cleanup_stalled_projects_task():

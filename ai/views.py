@@ -11,7 +11,7 @@ from django.conf import settings
 from django.contrib.staticfiles.storage import staticfiles_storage
 from django.utils.translation import gettext as _
 from django.core.cache import cache
-from .tasks import start_story_generation_pipeline, generate_pdf_task
+from .tasks import start_story_generation_pipeline, start_story_remix_pipeline
 from .models import StoryProject
 from .serializers import (
     StoryProjectCreateSerializer,
@@ -137,23 +137,6 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         project.save(update_fields=['is_saved'])
         
         return Response({"message": _("Story saved to library.")}, status=status.HTTP_200_OK)
-
-    @action(detail=True, methods=['post'], url_path='download-pdf')
-    def download_pdf(self, request, pk=None):
-        story_master_permission = IsStoryMaster()
-        if not story_master_permission.has_permission(request, self):
-            raise PermissionDenied(_(IsStoryMaster.message))
-        
-        project = self.get_object()
-        if project.status != StoryProject.Status.DONE:
-            raise ValidationError(_("Cannot generate PDF. Story is not yet complete."))
-        base_url = request.build_absolute_uri('/')[:-1]
-        generate_pdf_task.delay(project.id, base_url)
-        
-        return Response(
-            {"message": _("Your PDF is being generated. You will be notified when it is ready.")},
-            status=status.HTTP_202_ACCEPTED
-        )
 
 class GenerationOptionsView(APIView):
     permission_classes = [permissions.IsAuthenticated, HasActiveSubscription]
