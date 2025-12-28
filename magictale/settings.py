@@ -1,8 +1,8 @@
 from pathlib import Path
 from datetime import timedelta
 import environ
-import dj_database_url
 from django.utils.translation import gettext_lazy as _
+from django.core.exceptions import ImproperlyConfigured
 
 env = environ.Env(
     DEBUG=(bool, False)
@@ -156,6 +156,7 @@ BACKEND_BASE_URL = env('BACKEND_BASE_URL', default='http://127.0.0.1:8001')
 REVENUECAT_WEBHOOK_AUTH_HEADER = env("REVENUECAT_WEBHOOK_AUTH_HEADER", default=None)
 
 REDIS_URL = env("REDIS_URL", default=None)
+
 if REDIS_URL:
     CHANNEL_LAYERS = {"default": {"BACKEND": "channels_redis.core.RedisChannelLayer", "CONFIG": {"hosts": [REDIS_URL]}}}
     CELERY_BROKER_URL, CELERY_RESULT_BACKEND = REDIS_URL, REDIS_URL
@@ -166,6 +167,9 @@ if REDIS_URL:
         }
     }
 else:
+    if not DEBUG:
+        raise ImproperlyConfigured("REDIS_URL is missing! Celery cannot work in production without Redis.")
+    
     CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
     CELERY_BROKER_URL, CELERY_RESULT_BACKEND = 'memory://', 'django-db'
     CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache', 'LOCATION': 'unique-snowflake-for-magictale'}}

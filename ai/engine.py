@@ -281,12 +281,15 @@ async def _cleanup_audio_chunks(project_id: int):
         @sync_to_async
         def delete_chunks():
             try:
-                for i in range(1, 100):
-                    filename = f"audio/chunks/story_{project_id}_page_{i}.mp3"
+                page_indices = list(StoryPage.objects.filter(project_id=project_id).values_list('index', flat=True))
+                
+                for index in page_indices:
+                    filename = f"audio/chunks/story_{project_id}_page_{index}.mp3"
                     if default_storage.exists(filename):
                         default_storage.delete(filename)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Error inside delete_chunks wrapper: {e}")
+
         await delete_chunks()
         logger.info(f"Cleaned up audio chunks for project {project_id}")
     except Exception as e:
@@ -296,7 +299,6 @@ async def generate_text_logic(project_id: int):
     project = await _reload_project(project_id)
     if not project: return
     
-    # Early cancel check
     if project.status == 'canceled':
         logger.info(f"Project {project_id} canceled before text generation.")
         return
