@@ -68,6 +68,14 @@ def update_user_usage_task(project_id: int):
     on_failure=on_pipeline_failure
 )
 def generate_text_task(self, project_id: int):
+    try:
+        project = StoryProject.objects.get(id=project_id)
+        if project.status == 'canceled':
+            print(f"Project {project_id} canceled. Skipping Text.")
+            return project_id
+    except StoryProject.DoesNotExist:
+        return project_id
+
     print(f"Starting STAGE 1: TEXT for project {project_id}")
     async_to_sync(generate_text_logic)(project_id)
     print(f"Finished STAGE 1: TEXT for project {project_id}")
@@ -80,7 +88,9 @@ def generate_text_task(self, project_id: int):
 def generate_variants_task(project_id: int):
     try:
         project = StoryProject.objects.select_related('user__subscription').get(id=project_id)
-        
+        if project.status == 'canceled':
+            return
+
         user_plan = project.user.subscription.plan
         user_status = project.user.subscription.status
         
@@ -178,6 +188,13 @@ async def remix_text_logic(project_id: int, choice_id: str):
     on_failure=on_pipeline_failure
 )
 def remix_text_task(self, project_id: int, choice_id: str):
+    try:
+        project = StoryProject.objects.get(id=project_id)
+        if project.status == 'canceled':
+            return project_id
+    except StoryProject.DoesNotExist:
+        return project_id
+
     print(f"Starting REMIX: TEXT for project {project_id}")
     async_to_sync(remix_text_logic)(project_id, choice_id)
     print(f"Finished REMIX: TEXT for project {project_id}")
@@ -188,6 +205,9 @@ def watermark_cover_image_task(project_id: int):
     print(f"Checking for watermarking for project {project_id}")
     try:
         project = StoryProject.objects.select_related('user__subscription').get(id=project_id)
+        if project.status == 'canceled':
+            return project_id
+
         subscription = project.user.subscription
 
         if not (subscription.plan == 'creator' and subscription.status == 'active'):
@@ -248,6 +268,8 @@ def optimize_cover_image_task(project_id: int):
     print(f"Starting image optimization for project {project_id}")
     try:
         project = StoryProject.objects.get(id=project_id)
+        if project.status == 'canceled':
+            return project_id
         if not project.cover_image_url:
             return project_id
             
@@ -274,6 +296,14 @@ def optimize_cover_image_task(project_id: int):
 
 @shared_task(bind=True, autoretry_for=RETRYABLE_EXCEPTIONS, retry_kwargs={'max_retries': 5, 'countdown': 120, 'max_countdown': 1000}, on_failure=on_pipeline_failure)
 def generate_metadata_and_cover_task(self, project_id: int):
+    try:
+        project = StoryProject.objects.get(id=project_id)
+        if project.status == 'canceled':
+            print(f"Project {project_id} canceled. Skipping Metadata/Cover.")
+            return project_id
+    except StoryProject.DoesNotExist:
+        return project_id
+
     from .engine import generate_metadata_and_cover_logic
     print(f"Starting STAGE 2: METADATA/COVER for project {project_id}")
     async_to_sync(generate_metadata_and_cover_logic)(project_id)
@@ -289,6 +319,14 @@ def generate_metadata_and_cover_task(self, project_id: int):
 
 @shared_task(bind=True, autoretry_for=RETRYABLE_EXCEPTIONS, retry_kwargs={'max_retries': 3, 'countdown': 120}, on_failure=on_pipeline_failure)
 def generate_audio_task(self, project_id: int):
+    try:
+        project = StoryProject.objects.get(id=project_id)
+        if project.status == 'canceled':
+            print(f"Project {project_id} canceled. Skipping Audio.")
+            return project_id
+    except StoryProject.DoesNotExist:
+        return project_id
+
     print(f"Starting STAGE 3: AUDIO for project {project_id}")
     async_to_sync(generate_audio_logic)(project_id)
     print(f"Finished STAGE 3: AUDIO for project {project_id}")

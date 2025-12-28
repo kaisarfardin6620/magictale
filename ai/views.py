@@ -11,7 +11,7 @@ from django.conf import settings
 from django.contrib.staticfiles.storage import staticfiles_storage
 from django.utils.translation import gettext as _
 from django.core.cache import cache
-from .tasks import start_story_generation_pipeline, generate_pdf_task, start_story_remix_pipeline
+from .tasks import start_story_generation_pipeline, generate_pdf_task
 from .models import StoryProject
 from .serializers import (
     StoryProjectCreateSerializer,
@@ -112,35 +112,10 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
                 "image_url": request.build_absolute_uri(staticfiles_storage.url(f"images/themes/{choice['image_file']}"))})
         return Response(choices_with_urls)
 
-    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated, IsOwner, IsStoryMaster])
-    def remix(self, request, pk=None):
-        project = self.get_object()
-        
-        if project.status not in [StoryProject.Status.DONE, StoryProject.Status.CANCELED]:
-            raise ValidationError(_("This story cannot be remixed while it is still in progress."))
-            
-        choice_id = request.data.get('choice_id')
-        if not choice_id:
-            raise ValidationError({"choice_id": _("A choice_id must be provided.")})
-
-        if not any(choice['id'] == choice_id for theme in settings.ALL_THEMES_DATA.values() for choice in theme['choices']):
-            raise ValidationError({"choice_id": _("The provided choice is invalid.")})
-
-        project.status = StoryProject.Status.RUNNING
-        project.progress = 1
-        project.error = ""
-        project.finished_at = None
-        project.save(update_fields=["status", "progress", "error", "finished_at"])
-        
-        transaction.on_commit(lambda: start_story_remix_pipeline(project.id, choice_id))
-        
-        serializer = self.get_serializer(project)
-        return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
-
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
         project = self.get_object()
-        if project.status == StoryProject.Status.RUNNING:
+        if project.status == StoryProject.Status.RUNNING or project.status == StoryProject.Status.PENDING:
             project.status = StoryProject.Status.CANCELED
             project.save(update_fields=["status"])
             from channels.layers import get_channel_layer

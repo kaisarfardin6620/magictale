@@ -24,7 +24,7 @@ services:
     restart: unless-stopped
     init: true
     env_file: ./.env
-    command: ["celery", "-A", "magictale", "worker", "--loglevel=info", "--max-tasks-per-child=10"]
+    command: ["celery", "-A", "magictale", "worker", "--loglevel=info", "--max-tasks-per-child=10", "--concurrency=4"]
     volumes:
       - .:/app
       - ./media:/app/media

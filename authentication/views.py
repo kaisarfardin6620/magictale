@@ -10,8 +10,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.utils.translation import gettext as _ 
+import logging
 
-# Social Login Imports
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.apple.views import AppleOAuth2Adapter
 from allauth.socialaccount.providers.apple.client import AppleOAuth2Client
@@ -36,6 +36,8 @@ from datetime import timedelta
 from django.core.cache import cache
 from rest_framework.throttling import ScopedRateThrottle
 from notifications.tasks import create_and_send_notification_task
+
+logger = logging.getLogger(__name__)
 
 class MyTokenObtainPairView(APIView):
     permission_classes = [AllowAny]
@@ -289,7 +291,7 @@ class GoogleLoginView(APIView):
             
             return Response({'refresh': str(refresh), 'access': str(access_token_obj)}, status=status.HTTP_200_OK)
         except Exception as e:
-            print(f"Google authentication error: {e}")
+            logger.error(f"Google authentication error: {e}")
             return Response({"detail": _("An error occurred during Google authentication. Please try again.")}, status=status.HTTP_400_BAD_REQUEST)
 
 class AppleLoginView(APIView):
@@ -339,5 +341,5 @@ class AppleLoginView(APIView):
             return Response({'refresh': str(refresh), 'access': str(access_token_obj)}, status=status.HTTP_200_OK)
             
         except Exception as e:
-            print(f"Apple authentication error: {e}")
+            logger.error(f"Apple authentication error: {e}")
             return Response({"detail": _("An error occurred during Apple authentication. Please try again.")}, status=status.HTTP_400_BAD_REQUEST)

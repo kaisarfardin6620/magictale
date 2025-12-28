@@ -4,6 +4,8 @@ import json
 import io
 import requests
 import copy
+import shutil
+import tempfile
 from pathlib import Path
 from django.utils import timezone
 from asgiref.sync import sync_to_async
@@ -49,15 +51,37 @@ def _save_event(project: StoryProject, kind: str, payload: dict):
 
 @sync_to_async
 def _update_project_state(project: StoryProject, status: str = None, progress: int = None, error: str = None, finished=False, **kwargs):
+    current_project = StoryProject.objects.filter(pk=project.pk).first()
+    if not current_project:
+        return project.progress, project.status
+
+    if current_project.status == 'canceled':
+        return current_project.progress, 'canceled'
+    
+    if current_project.status == 'failed' and status != 'failed':
+        return current_project.progress, 'failed'
+
     changed = []
-    if status: project.status = status; changed.append("status")
-    if progress is not None: project.progress = max(0, min(100, progress)); changed.append("progress")
-    if error is not None: project.error = error; changed.append("error")
-    if finished: project.finished_at = timezone.now(); changed.append("finished_at")
+    if status: 
+        project.status = status
+        changed.append("status")
+    if progress is not None: 
+        project.progress = max(0, min(100, progress))
+        changed.append("progress")
+    if error is not None: 
+        project.error = error
+        changed.append("error")
+    if finished: 
+        project.finished_at = timezone.now()
+        changed.append("finished_at")
+    
     for key, value in kwargs.items():
         setattr(project, key, value)
         changed.append(key)
-    if changed: project.save(update_fields=changed)
+    
+    if changed: 
+        project.save(update_fields=changed)
+    
     return project.progress, project.status
 
 @sync_to_async
@@ -145,13 +169,18 @@ async def _generate_cover_image_async(metadata: dict, project: StoryProject):
 
             if temp_url:
                 def save_image():
-                    resp = requests.get(temp_url)
-                    if resp.status_code == 200:
-                        file_name = f"covers/story_{project.id}_cover.png"
-                        if default_storage.exists(file_name):
-                            default_storage.delete(file_name)
-                        saved_path = default_storage.save(file_name, ContentFile(resp.content))
-                        return default_storage.url(saved_path)
+                    with requests.get(temp_url, stream=True) as resp:
+                        if resp.status_code == 200:
+                            file_name = f"covers/story_{project.id}_cover.png"
+                            if default_storage.exists(file_name):
+                                default_storage.delete(file_name)
+                            
+                            with tempfile.TemporaryFile() as tf:
+                                shutil.copyfileobj(resp.raw, tf)
+                                tf.seek(0)
+                                saved_path = default_storage.save(file_name, ContentFile(tf.read()))
+                            
+                            return default_storage.url(saved_path)
                     return ""
                 
                 image_url_db = await sync_to_async(save_image)()
@@ -265,7 +294,12 @@ async def _cleanup_audio_chunks(project_id: int):
 
 async def generate_text_logic(project_id: int):
     project = await _reload_project(project_id)
-    if not project or project.status != 'running': return
+    if not project: return
+    
+    # Early cancel check
+    if project.status == 'canceled':
+        logger.info(f"Project {project_id} canceled before text generation.")
+        return
 
     await _save_event(project, "stage1_start", {})
     await _send(project_id, {"status": "running", "progress": 5, "message": _("Whispering to the story spirits...")})
@@ -302,7 +336,11 @@ async def generate_text_logic(project_id: int):
 
 async def generate_metadata_and_cover_logic(project_id: int):
     project = await _reload_project(project_id)
-    if not project or project.status != 'running': return
+    if not project: return
+    
+    if project.status == 'canceled':
+        logger.info(f"Project {project_id} canceled before metadata.")
+        return
 
     await _save_event(project, "stage2_start", {})
     await _send(project_id, {"progress": 40, "message": _("Summarizing and drawing the cover...")})
@@ -318,7 +356,11 @@ async def generate_metadata_and_cover_logic(project_id: int):
 
 async def generate_audio_logic(project_id: int):
     project = await _reload_project(project_id)
-    if not project or project.status != 'running': return
+    if not project: return
+
+    if project.status == 'canceled':
+        logger.info(f"Project {project_id} canceled before audio.")
+        return
 
     await _save_event(project, "stage3_start", {})
     await _send(project_id, {"progress": 70, "message": _("Recording narration for each page...")})

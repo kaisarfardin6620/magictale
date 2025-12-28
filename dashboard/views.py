@@ -35,6 +35,7 @@ from django.core.cache import cache
 from rest_framework.exceptions import ValidationError
 from . import services
 from django.utils.translation import gettext as _
+from urllib.parse import urlencode
 
 
 class DashboardStatsAPIView(APIView):
@@ -80,6 +81,7 @@ class DashboardStatsAPIView(APIView):
         except (PageNotAnInteger, EmptyPage):
             paginated_users = user_paginator.page(1)
         user_serializer = DashboardUserSerializer(paginated_users, many=True)
+        
         story_list = StoryProject.objects.select_related('user').order_by('-created_at')
         story_paginator = Paginator(story_list, 10)
         story_page_number = request.query_params.get('story_page', 1)
@@ -88,21 +90,22 @@ class DashboardStatsAPIView(APIView):
         except (PageNotAnInteger, EmptyPage):
             paginated_stories = story_paginator.page(1)
         story_serializer = DashboardStorySerializer(paginated_stories, many=True)
-        scheme = request.scheme
-        host = request.get_host()
-        path = request.path
+        
+        base_url = request.build_absolute_uri(request.path)
+
         def get_next_url(paginated_qs, page_param_name):
             if paginated_qs.has_next():
                 params = request.query_params.copy()
                 params[page_param_name] = paginated_qs.next_page_number()
-                return f"{scheme}://{host}{path}?{params.urlencode()}"
+                return f"{base_url}?{params.urlencode()}"
             return None
         def get_previous_url(paginated_qs, page_param_name):
             if paginated_qs.has_previous():
                 params = request.query_params.copy()
                 params[page_param_name] = paginated_qs.previous_page_number()
-                return f"{scheme}://{host}{path}?{params.urlencode()}"
+                return f"{base_url}?{params.urlencode()}"
             return None
+            
         data = {
             'stats': {
                 'total_users': {'value': total_users, 'change': self._calculate_change(total_users - users_this_month, users_this_month)},
@@ -202,7 +205,6 @@ class AdminProfileView(APIView):
         user = request.user
 
         try:
-            # if 'new_password' in request.data and 'current_password' in request.data:
             if 'new_password' in request.data:
                 services.change_admin_password(user, data=request.data, context={'request': request})
 

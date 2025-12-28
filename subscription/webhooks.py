@@ -39,7 +39,11 @@ def revenuecat_webhook(request):
     auth_header = request.headers.get("Authorization")
     expected_header = settings.REVENUECAT_WEBHOOK_AUTH_HEADER
     
-    if expected_header and auth_header != expected_header:
+    if not expected_header:
+        logger.error("RevenueCat Webhook Secret is not configured in settings.")
+        return HttpResponseForbidden("Server Configuration Error")
+
+    if auth_header != expected_header:
         logger.warning("RevenueCat Webhook: Invalid Authorization Header")
         return HttpResponseForbidden("Invalid Authorization")
 
