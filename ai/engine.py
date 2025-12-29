@@ -210,12 +210,10 @@ def _build_synopsis_prompt(story_text: str) -> str:
     )
 
 def _build_cover_image_prompt(synopsis: str, project: StoryProject) -> str:
-    prompt_dir = Path(__file__).parent / "prompts"
     theme_name = settings.THEME_ID_TO_NAME_MAP.get(project.theme, project.theme)
-    
     base_subject = synopsis if synopsis and len(synopsis) > 20 else theme_name
     
-    prompt_subject = f"{base_subject}. Scene is peaceful, cute, whimsical, G-rated, child-friendly. No violence, no weapons, no scary elements."
+    prompt_subject = f"{base_subject}. The scene is peaceful, cute, whimsical, G-rated, and child-friendly."
     
     art_style_key = project.art_style
     art_style_description = STYLE_PROMPT_ENHANCERS.get(art_style_key)
@@ -223,7 +221,13 @@ def _build_cover_image_prompt(synopsis: str, project: StoryProject) -> str:
     if not art_style_description:
         art_style_description = settings.ART_STYLE_ID_TO_NAME_MAP.get(art_style_key, art_style_key)
 
-    return (prompt_dir / "cover_image_prompt.txt").read_text().format(art_style=art_style_description, prompt_subject=prompt_subject)
+    final_prompt = (
+        f"An illustration strictly in the style of: {art_style_description}. "
+        f"Depicting: {prompt_subject}. "
+        "No text, no words, no letters, no bubbles. High quality, vivid colors."
+    )
+
+    return final_prompt
 
 @sync_to_async
 def _fetch_file_content(path):

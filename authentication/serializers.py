@@ -33,12 +33,14 @@ class PasswordValidator:
 
     @staticmethod
     def validate_password_strength(password):
+        # Check all conditions first
         has_length = len(password) >= 10
         has_upper = re.search(r"[A-Z]", password)
         has_lower = re.search(r"[a-z]", password)
         has_digit = re.search(r"\d", password)
         has_special = re.search(r"[!@#$%^&*()_+=\-{}[\]|\\:;\"'<,>.?/]", password)
 
+        # If any condition fails, return the single consolidated message
         if not (has_length and has_upper and has_lower and has_digit and has_special):
             raise serializers.ValidationError(
                 _("Password must contain at least 10 characters, including an uppercase letter, a lowercase letter, a number, and a special character.")
@@ -53,20 +55,24 @@ class SignupSerializer(serializers.ModelSerializer):
         model = User
         fields = ['full_name', 'email', 'password']
         extra_kwargs = {'password': {'write_only': True}}
+
     def validate_email(self, value):
         if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError(_("This email is already in use."))
         return value
+
     def create(self, validated_data):
         full_name = validated_data.pop('full_name').strip()
         email = validated_data['email']
         password = validated_data['password']
 
+        # Logic to split full name into first and last name
         if " " in full_name:
             first_name, last_name = full_name.split(" ", 1)
         else:
             first_name, last_name = full_name, ""
 
+        # We use email as the username to satisfy Django's requirement
         user = User.objects.create_user(
             username=email, 
             email=email,
@@ -162,7 +168,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = [
-            'profile_picture', 'phone_number', 'language', 'allow_push_notifications',
+            'profile_picture', 'phone_number', 'allow_push_notifications',
             'subscription_active', 'current_plan', 'trial_end_date'
         ]
     def get_subscription_active(self, obj):
@@ -252,11 +258,3 @@ class UserActivityLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserActivityLog
         fields = ['activity_type', 'timestamp', 'ip_address', 'user_agent']
-class LanguagePreferenceSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = UserProfile
-        fields = ['language']
-    def validate_language(self, value):
-        if len(value) > 10:
-             raise serializers.ValidationError(_("Language code is too long."))
-        return value

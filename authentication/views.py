@@ -26,7 +26,6 @@ from .serializers import (
     ResendVerificationSerializer,
     MyTokenObtainPairSerializer,
     UserActivityLogSerializer,
-    LanguagePreferenceSerializer,
     UnifiedProfileUpdateSerializer,
     PasswordResetFormSerializer
 )
@@ -57,6 +56,9 @@ class SignupAPIView(APIView):
         serializer = SignupSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
+            
+            # Note: Subscription and UserProfile are created via signals.py to prevent race conditions
+            
             UserActivityLog.objects.create(user=user, activity_type='signup', ip_address=get_client_ip(request))
             token = AuthToken.objects.create(user=user, token_type='email_verification')
             verification_path = reverse('email_verification') + f'?token={token.token}'
@@ -103,6 +105,7 @@ class ResendVerificationEmailAPIView(APIView):
         serializer = ResendVerificationSerializer(data=request.data)
         if serializer.is_valid():
             try:
+                # Username is now the email address
                 user = User.objects.get(email__iexact=serializer.validated_data['username'])
                 if user.is_active:
                     return Response({'detail': _('This account is already active.')}, status=status.HTTP_400_BAD_REQUEST)
@@ -130,6 +133,7 @@ class ProfileView(APIView):
             profile = UserProfile.objects.get(user=request.user)
             serializer = ProfileSerializer(profile)
             
+            # Combine First and Last name into Full Name for response
             full_name = f"{request.user.first_name} {request.user.last_name}".strip()
             
             user_data = {
@@ -236,24 +240,6 @@ class DeleteAccountView(APIView):
     def delete(self, request):
         request.user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
-
-class UserLanguageListView(APIView):
-    permission_classes = [IsAuthenticated]
-    def get(self, request):
-        languages = [{"code": code, "name": str(name)} for code, name in settings.LANGUAGES]
-        return Response(languages)
-
-class LanguagePreferenceView(APIView):
-    permission_classes = [IsAuthenticated]
-    def get(self, request):
-        serializer = LanguagePreferenceSerializer(request.user.profile)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    def put(self, request):
-        serializer = LanguagePreferenceSerializer(request.user.profile, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class GoogleLoginView(APIView):
     permission_classes = [AllowAny]

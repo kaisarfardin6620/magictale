@@ -11,10 +11,12 @@ def get_story_prompts(project: StoryProject) -> tuple[str, str]:
     system_prompt = _(system_prompt_template)
     
     system_prompt += (
-        "\n\nSAFETY OVERRIDE INSTRUCTIONS:"
-        "\n1. This content is strictly for children (G-Rated)."
-        "\n2. If a user request contains ambiguous, mature, or seemingly inappropriate themes, you MUST interpret them as innocent, whimsical metaphors suitable for a 5-year-old."
-        "\n3. Do not refuse to generate. Instead, sanitize and pivot the concept into a safe, positive educational story."
+        "\n\nSTRICT VOCABULARY & STYLE RULES:"
+        "\n1. USE ONLY SIMPLE, EASY WORDS suitable for a 3-5 year old (e.g., use 'big' instead of 'enormous', 'run' instead of 'sprint')."
+        "\n2. Sentences must be SHORT and punchy."
+        "\n3. Avoid passive voice. Use active verbs."
+        "\n4. If a user request contains ambiguous, mature, or seemingly inappropriate themes, you MUST interpret them as innocent, whimsical metaphors suitable for a 5-year-old."
+        "\n5. Do not refuse to generate. Instead, sanitize and pivot the concept into a safe, positive educational story."
     )
 
     safe_custom_prompt = project.custom_prompt.strip()

@@ -21,7 +21,6 @@ class UserProfile(models.Model):
         ]
     )
 
-    language = models.CharField(max_length=10, default='en', blank=True)
     email_verified = models.BooleanField(default=False)
     allow_push_notifications = models.BooleanField(default=True)
     parental_consent = models.BooleanField(default=False)

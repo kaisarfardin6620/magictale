@@ -42,11 +42,10 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.locale.LocaleMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'authentication.middleware.UserLanguageMiddleware', 
+    # Removed UserLanguageMiddleware
     'magictale.api.middleware.APILoggingMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -79,12 +78,6 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-LANGUAGES = [
-    ('en', _('English')), ('es', _('Spanish')), ('fr', _('French')),
-    ('de', _('German')), ('it', _('Italian')), ('pt', _('Portuguese')),
-]
-LOCALE_PATHS = [BASE_DIR / 'locale']
 
 USE_S3_STORAGE = env.bool('USE_S3_STORAGE', default=False)
 
