@@ -57,19 +57,11 @@ class SignupAPIView(APIView):
         serializer = SignupSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            now = timezone.now()
-            Subscription.objects.create(
-                user=user,
-                plan='trial',
-                status='trialing',
-                trial_start=now,
-                trial_end=now + timedelta(days=14)
-            )
             UserActivityLog.objects.create(user=user, activity_type='signup', ip_address=get_client_ip(request))
             token = AuthToken.objects.create(user=user, token_type='email_verification')
             verification_path = reverse('email_verification') + f'?token={token.token}'
             verification_url = f"{settings.BACKEND_BASE_URL}{verification_path}"
-            html_message = render_to_string('emails/signup_verification_email.html', {'username': user.username, 'verification_url': verification_url})
+            html_message = render_to_string('emails/signup_verification_email.html', {'username': user.first_name, 'verification_url': verification_url})
             plain_message = f'Please click the link to verify your email: {verification_url}'
             send_email('Verify your email for MagicTale', plain_message, [user.email], html_message=html_message)
             create_and_send_notification_task.delay(
@@ -111,14 +103,14 @@ class ResendVerificationEmailAPIView(APIView):
         serializer = ResendVerificationSerializer(data=request.data)
         if serializer.is_valid():
             try:
-                user = User.objects.get(username=serializer.validated_data['username'])
+                user = User.objects.get(email__iexact=serializer.validated_data['username'])
                 if user.is_active:
                     return Response({'detail': _('This account is already active.')}, status=status.HTTP_400_BAD_REQUEST)
                 AuthToken.objects.filter(user=user, token_type='email_verification', is_used=False).delete()
                 token = AuthToken.objects.create(user=user, token_type='email_verification')
                 verification_path = reverse('email_verification') + f'?token={token.token}'
                 verification_url = f"{settings.BACKEND_BASE_URL}{verification_path}"
-                html_message = render_to_string('emails/signup_verification_email.html', {'username': user.username, 'verification_url': verification_url})
+                html_message = render_to_string('emails/signup_verification_email.html', {'username': user.first_name, 'verification_url': verification_url})
                 send_email('Verify your email', f'Link: {verification_url}', [user.email], html_message=html_message)
                 return Response({"message": _("Verification email has been resent.")}, status=status.HTTP_200_OK)
             except User.DoesNotExist:
@@ -137,14 +129,19 @@ class ProfileView(APIView):
         try:
             profile = UserProfile.objects.get(user=request.user)
             serializer = ProfileSerializer(profile)
+            
+            full_name = f"{request.user.first_name} {request.user.last_name}".strip()
+            
             user_data = {
-                'first_name': request.user.first_name, 'last_name': request.user.last_name, 'email': request.user.email,
+                'full_name': full_name,
+                'email': request.user.email,
             }
             response_data = {**user_data, **serializer.data}
             cache.set(cache_key, response_data, timeout=3600) 
             return Response(response_data, status=status.HTTP_200_OK)
         except UserProfile.DoesNotExist:
             return Response({'detail': _('User profile not found.')}, status=status.HTTP_404_NOT_FOUND)
+    
     def put(self, request):
         try:
             profile = UserProfile.objects.get(user=request.user)

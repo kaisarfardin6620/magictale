@@ -33,34 +33,48 @@ class PasswordValidator:
 
     @staticmethod
     def validate_password_strength(password):
-        if len(password) < 10:
-            raise serializers.ValidationError(_("Password must be at least 10 characters long."))
-        if not re.search(r"[A-Z]", password):
-            raise serializers.ValidationError(_("Password must contain at least one uppercase letter."))
-        if not re.search(r"[a-z]", password):
-            raise serializers.ValidationError(_("Password must contain at least one lowercase letter."))
-        if not re.search(r"\d", password):
-            raise serializers.ValidationError(_("Password must contain at least one digit."))
-        if not re.search(r"[!@#$%^&*()_+=\-{}[\]|\\:;\"'<,>.?/]", password):
-            raise serializers.ValidationError(_("Password must contain at least one special character."))
+        has_length = len(password) >= 10
+        has_upper = re.search(r"[A-Z]", password)
+        has_lower = re.search(r"[a-z]", password)
+        has_digit = re.search(r"\d", password)
+        has_special = re.search(r"[!@#$%^&*()_+=\-{}[\]|\\:;\"'<,>.?/]", password)
+
+        if not (has_length and has_upper and has_lower and has_digit and has_special):
+            raise serializers.ValidationError(
+                _("Password must contain at least 10 characters, including an uppercase letter, a lowercase letter, a number, and a special character.")
+            )
 
 class SignupSerializer(serializers.ModelSerializer):
+    full_name = serializers.CharField(write_only=True, required=True)
     password = serializers.CharField(write_only=True, required=True, validators=[PasswordValidator.validate_password_strength])
     email = serializers.EmailField(required=True)
+
     class Meta:
         model = User
-        fields = ['username', 'email', 'password']
+        fields = ['full_name', 'email', 'password']
         extra_kwargs = {'password': {'write_only': True}}
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
+        if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError(_("This email is already in use."))
         return value
     def create(self, validated_data):
+        full_name = validated_data.pop('full_name').strip()
+        email = validated_data['email']
+        password = validated_data['password']
+
+        if " " in full_name:
+            first_name, last_name = full_name.split(" ", 1)
+        else:
+            first_name, last_name = full_name, ""
+
         user = User.objects.create_user(
-            username=validated_data['username'], email=validated_data['email'],
-            password=validated_data['password'], is_active=False
+            username=email, 
+            email=email,
+            password=password, 
+            first_name=first_name,
+            last_name=last_name,
+            is_active=False
         )
-        UserProfile.objects.create(user=user)
         return user
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -110,7 +124,7 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         create_and_send_notification_task.delay(
             self.user.id,
             "Login Successful",
-            f"Welcome back, {self.user.username}!"
+            f"Welcome back, {self.user.first_name}!"
         )
 
         if fcm_token:
@@ -133,6 +147,7 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         data = {
             'id': self.user.id,
             'email': self.user.email,
+            'full_name': f"{self.user.first_name} {self.user.last_name}".strip(),
             'token': str(refresh.access_token),
             'refresh_token': str(refresh)
         }
@@ -167,21 +182,12 @@ class ProfileSerializer(serializers.ModelSerializer):
             return None
 
 class UnifiedProfileUpdateSerializer(serializers.Serializer):
-    user_name = serializers.CharField(max_length=301, required=False)
-    first_name = serializers.CharField(max_length=150, required=False)
-    last_name = serializers.CharField(max_length=150, required=False)
+    full_name = serializers.CharField(max_length=301, required=False)
     new_email = serializers.EmailField(required=False, write_only=True)
     new_password = serializers.CharField(style={'input_type': 'password'}, write_only=True, required=False, validators=[PasswordValidator.validate_password_strength])
-    # current_password = serializers.CharField(style={'input_type': 'password'}, write_only=True, required=False)
     profile_picture = serializers.ImageField(required=False, allow_null=True)
     phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
     allow_push_notifications = serializers.BooleanField(required=False)
-
-    # def validate_current_password(self, value):
-    #     user = self.context['request'].user
-    #     if not check_password(value, user.password):
-    #         raise serializers.ValidationError(_("Your current password is not correct."))
-    #     return value
 
     def validate_new_email(self, value):
         user = self.context['request'].user
@@ -190,10 +196,6 @@ class UnifiedProfileUpdateSerializer(serializers.Serializer):
         return value
 
     def validate(self, data):
-        # if 'new_password' in data and 'current_password' not in data:
-        #      raise serializers.ValidationError({"current_password": _("You must provide your current password to set a new one.")})
-        
-        # if 'new_password' in data and 'current_password' in data:
         if 'new_password' in data:
             user = self.context['request'].user
             if check_password(data['new_password'], user.password):
@@ -203,23 +205,28 @@ class UnifiedProfileUpdateSerializer(serializers.Serializer):
     def update(self, instance, validated_data):
         user = instance.user
         profile = instance
-        if 'user_name' in validated_data:
-            full_name = validated_data.get('user_name', '').strip()
-            name_parts = full_name.split(' ', 1)
-            user.first_name = name_parts[0]
-            user.last_name = name_parts[1] if len(name_parts) > 1 else ''
-        else:
-            user.first_name = validated_data.get('first_name', user.first_name)
-            user.last_name = validated_data.get('last_name', user.last_name)
+        
+        if 'full_name' in validated_data:
+            full_name = validated_data.get('full_name', '').strip()
+            if " " in full_name:
+                first_name, last_name = full_name.split(" ", 1)
+            else:
+                first_name, last_name = full_name, ""
+            user.first_name = first_name
+            user.last_name = last_name
+        
         new_email = validated_data.get('new_email')
         if new_email and new_email.lower() != user.email.lower():
             user.email = new_email
             user.username = new_email
+            
         if 'new_password' in validated_data:
             user.set_password(validated_data['new_password'])
             PasswordHistory.objects.create(user=user, password_hash=user.password)
             OutstandingToken.objects.filter(user=user).delete()
+            
         user.save()
+        
         profile.phone_number = validated_data.get('phone_number', profile.phone_number)
         profile.allow_push_notifications = validated_data.get('allow_push_notifications', profile.allow_push_notifications)
         if 'profile_picture' in validated_data:
