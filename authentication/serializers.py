@@ -4,17 +4,11 @@ import requests
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.contrib.auth.hashers import check_password
-from django.urls import reverse
-from django.template.loader import render_to_string
 from rest_framework import serializers
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 from subscription.models import Subscription
-from .models import UserProfile, AuthToken, PasswordHistory, UserActivityLog, OnboardingStatus
-from .utils import send_email
-from django.contrib.auth import authenticate
+from .models import UserProfile, AuthToken, PasswordHistory, UserActivityLog
 from rest_framework_simplejwt.tokens import RefreshToken
-from fcm_django.models import FCMDevice
-import time
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework.exceptions import AuthenticationFailed
 from notifications.tasks import create_and_send_notification_task
@@ -33,14 +27,12 @@ class PasswordValidator:
 
     @staticmethod
     def validate_password_strength(password):
-        # Check all conditions first
         has_length = len(password) >= 10
         has_upper = re.search(r"[A-Z]", password)
         has_lower = re.search(r"[a-z]", password)
         has_digit = re.search(r"\d", password)
         has_special = re.search(r"[!@#$%^&*()_+=\-{}[\]|\\:;\"'<,>.?/]", password)
 
-        # If any condition fails, return the single consolidated message
         if not (has_length and has_upper and has_lower and has_digit and has_special):
             raise serializers.ValidationError(
                 _("Password must contain at least 10 characters, including an uppercase letter, a lowercase letter, a number, and a special character.")
@@ -66,13 +58,11 @@ class SignupSerializer(serializers.ModelSerializer):
         email = validated_data['email']
         password = validated_data['password']
 
-        # Logic to split full name into first and last name
         if " " in full_name:
             first_name, last_name = full_name.split(" ", 1)
         else:
             first_name, last_name = full_name, ""
 
-        # We use email as the username to satisfy Django's requirement
         user = User.objects.create_user(
             username=email, 
             email=email,
@@ -84,8 +74,6 @@ class SignupSerializer(serializers.ModelSerializer):
         return user
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
-    fcm_token = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['email'] = serializers.EmailField()
@@ -109,7 +97,6 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         email = attrs.get('email')
         password = attrs.get('password')
-        fcm_token = attrs.get('fcm_token')
 
         if not email:
             raise serializers.ValidationError(_('Email address is required to log in.'), code='authorization')
@@ -127,28 +114,6 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         self.user = user
 
-        create_and_send_notification_task.delay(
-            self.user.id,
-            "Login Successful",
-            f"Welcome back, {self.user.first_name}!"
-        )
-
-        if fcm_token:
-            user_agent = self.context['request'].META.get('HTTP_USER_AGENT', '').lower()
-            device_type = 'web' 
-            if 'android' in user_agent:
-                device_type = 'android'
-            elif 'iphone' in user_agent or 'ipad' in user_agent:
-                device_type = 'ios'
-
-            FCMDevice.objects.update_or_create(
-                registration_id=fcm_token,
-                defaults={
-                    'user': self.user,
-                    'active': True,
-                    'type': device_type
-                }
-            )
         refresh = self.get_token(self.user)
         data = {
             'id': self.user.id,
@@ -159,6 +124,10 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         }
 
         return data
+
+class FCMDeviceSerializer(serializers.Serializer):
+    registration_id = serializers.CharField(required=True)
+    type = serializers.ChoiceField(choices=['ios', 'android', 'web'], required=False, default='web')
 
 class ProfileSerializer(serializers.ModelSerializer):
     subscription_active = serializers.SerializerMethodField()

@@ -45,7 +45,6 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    # Removed UserLanguageMiddleware
     'magictale.api.middleware.APILoggingMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -244,7 +243,6 @@ SOCIALACCOUNT_PROVIDERS = {
         'APP': {
             'client_id': env('APPLE_CLIENT_ID'),
             'secret': env('APPLE_KEY_ID'),
-            'key': env('APPLE_KEY_FILE', default=None),
             'certificate_key': env('APPLE_CERTIFICATE_CONTENT', default=None),
             'team_id': env('APPLE_TEAM_ID'),
         },
@@ -255,7 +253,6 @@ SOCIALACCOUNT_PROVIDERS = {
 
 FCM_DJANGO_SETTINGS = {
     "APP_VERBOSE_NAME": "MagicTale",
-    "FCM_SERVER_KEY": env('FCM_SERVER_KEY_LEGACY', default=None),
     "ONE_DEVICE_PER_USER": False,
     "DELETE_INACTIVE_DEVICES": True,
     "FCM_CREDENTIALS": env('FIREBASE_SERVICE_ACCOUNT_PATH', default=None),

@@ -12,6 +12,7 @@ from .views import (
     DeleteAccountView,
     GoogleLoginView,
     AppleLoginView,
+    RegisterDeviceView
 )
 from rest_framework_simplejwt.views import TokenBlacklistView
 
@@ -29,4 +30,5 @@ urlpatterns = [
     path('google/', GoogleLoginView.as_view(), name='google_login'),
     path('apple/', AppleLoginView.as_view(), name='apple_login'),
     path('logout/', TokenBlacklistView.as_view(), name='token_blacklist'),
+    path('devices/register/', RegisterDeviceView.as_view(), name='register_device'),
 ]
