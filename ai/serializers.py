@@ -5,6 +5,7 @@ from django.conf import settings
 from django.db import transaction
 from types import SimpleNamespace
 from django.utils.translation import gettext as _
+from django.core.cache import cache
 
 class StoryPageSerializer(serializers.ModelSerializer):
     class Meta:
@@ -179,6 +180,19 @@ class StoryProjectDetailSerializer(serializers.ModelSerializer):
         return None
     
     def get_variants(self, obj):
+        # We only cache variants when the story is DONE to avoid stale data during running phase
+        if obj.status == StoryProject.Status.DONE:
+            cache_key = f"story_variants_{obj.id}"
+            cached_data = cache.get(cache_key)
+            if cached_data:
+                return cached_data
+            
+            variants = obj.variants.all()
+            data = VariantSerializer(variants, many=True).data
+            cache.set(cache_key, data, timeout=300)
+            return data
+        
+        # fallback for running/pending stories
         variants = obj.variants.all()
         return VariantSerializer(variants, many=True).data
 

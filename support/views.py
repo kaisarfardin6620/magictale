@@ -22,7 +22,7 @@ class UserReportViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.is_staff or user.is_superuser:
             return UserReport.objects.select_related('user').order_by('-created_at')
-        return UserReport.objects.filter(user=user).order_by('-created_at')
+        return UserReport.objects.filter(user=user).select_related('user').order_by('-created_at')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

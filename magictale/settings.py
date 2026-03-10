@@ -156,10 +156,24 @@ if REDIS_URL:
     CELERY_BROKER_URL, CELERY_RESULT_BACKEND = REDIS_URL, REDIS_URL
     CACHES = {
         "default": {
-            "BACKEND": "django_redis.cache.RedisCache", "LOCATION": f"{REDIS_URL}/1",
-            "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"}
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": f"{REDIS_URL}/1",
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                "IGNORE_EXCEPTIONS": True,
+            }
+        },
+        "sessions": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": f"{REDIS_URL}/2",
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                "IGNORE_EXCEPTIONS": True,
+            }
         }
     }
+    SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+    SESSION_CACHE_ALIAS = "sessions"
 else:
     if not DEBUG:
         raise ImproperlyConfigured("REDIS_URL is missing! Celery cannot work in production without Redis.")

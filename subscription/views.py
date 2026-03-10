@@ -14,11 +14,11 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
     serializer_class = SubscriptionSerializer
 
     def get_queryset(self):
-        return Subscription.objects.filter(user=self.request.user)
+        return Subscription.objects.filter(user=self.request.user).select_related('user')
 
     @action(detail=False, methods=["get"], url_path='status')
     def status(self, request):
-        subscription, created = Subscription.objects.get_or_create(user=request.user)
+        subscription, created = Subscription.objects.select_related('user').get_or_create(user=request.user)
         serializer = self.get_serializer(subscription)
         return Response(serializer.data)
 

@@ -33,7 +33,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
             super().get_queryset()
             .filter(user=self.request.user)
             .select_related('user', 'onboarding') 
-            .prefetch_related('variants')
+            .prefetch_related('variants', 'events')
             .annotate(page_count_annotated=Count('pages'))
             .order_by("-created_at")
         )

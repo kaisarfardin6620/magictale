@@ -10,7 +10,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'delete']
 
     def get_queryset(self):
-        return Notification.objects.filter(user=self.request.user)
+        return Notification.objects.filter(user=self.request.user).select_related('user')
 
     @action(detail=True, methods=['post'], url_path='mark-read')
     def mark_as_read(self, request, pk=None):
