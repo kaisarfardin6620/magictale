@@ -63,7 +63,8 @@ DATABASES = {
 }
 
 if DATABASES['default']['ENGINE'] != 'django.db.backends.sqlite3':
-    DATABASES['default']['conn_max_age'] = 600
+    DATABASES['default']['CONN_MAX_AGE'] = 300
+    DATABASES['default']['DISABLE_SERVER_SIDE_CURSORS'] = True
 
 AUTHENTICATION_BACKENDS = ('django.contrib.auth.backends.ModelBackend', 'allauth.account.auth_backends.AuthenticationBackend',)
 AUTH_PASSWORD_VALIDATORS = [

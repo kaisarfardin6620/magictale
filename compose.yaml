@@ -2,9 +2,13 @@ services:
   python-app:
     build:
       context: .
-    container_name: python-app
     restart: unless-stopped
     init: true
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        order: start-first
     env_file: ./.env
     entrypoint: /usr/local/bin/docker-entrypoint.sh
     command: ["daphne", "-b", "0.0.0.0", "-p", "8000", "magictale.asgi:application"]
@@ -14,15 +18,17 @@ services:
       - ./media:/app/media
     depends_on:
       - redis-cache
+      - pgbouncer
     networks:
       - backend
 
   celery-worker:
     build:
       context: .
-    container_name: celery-worker
     restart: unless-stopped
     init: true
+    deploy:
+      replicas: 2
     env_file: ./.env
     command: ["celery", "-A", "magictale", "worker", "--loglevel=info", "--max-tasks-per-child=10", "--concurrency=4"]
     volumes:
@@ -30,6 +36,7 @@ services:
       - ./media:/app/media
     depends_on:
       - redis-cache
+      - pgbouncer
     networks:
       - backend
 
@@ -39,14 +46,37 @@ services:
     container_name: celery-beat
     restart: unless-stopped
     init: true
+    deploy:
+      replicas: 1
     env_file: ./.env
     command: ["celery", "-A", "magictale", "beat", "--loglevel=info"]
     volumes:
       - .:/app
     depends_on:
       - redis-cache
+      - pgbouncer
     networks:
       - backend
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: pgbouncer
+    restart: unless-stopped
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DATABASES=Magictale = host=host.docker.internal port=5432 auth_user=${DB_USER} password=${DB_PASSWORD}
+      - POOL_MODE=transaction
+      - MAX_CLIENT_CONN=1000
+      - DEFAULT_POOL_SIZE=20
+      - AUTH_TYPE=scram-sha-256
+    networks:
+      - backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   nginx:
     image: nginx:alpine
