@@ -46,28 +46,38 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
                 
                 active_plan = None
                 max_expiration = None
-                ent_master = entitlements.get("pro max") or entitlements.get("pro_max")
-                if ent_master:
-                    expires_date_str = ent_master.get("expires_date")
-                    if expires_date_str:
-                        expires_date = datetime.datetime.fromisoformat(expires_date_str.replace('Z', '+00:00'))
-                        if expires_date > timezone.now():
-                            active_plan = "master"
-                            max_expiration = expires_date
-                    else:
-                        active_plan = "master"
+                
+                master_identifiers = ["pro max", "pro_max", "master", "story_master", "story master"]
+                creator_identifiers = ["pro", "creator", "story_creator", "story creator"]
 
-                if not active_plan:
-                    ent_creator = entitlements.get("pro")
-                    if ent_creator:
-                        expires_date_str = ent_creator.get("expires_date")
+                for ident in master_identifiers:
+                    ent = entitlements.get(ident)
+                    if ent:
+                        expires_date_str = ent.get("expires_date")
                         if expires_date_str:
                             expires_date = datetime.datetime.fromisoformat(expires_date_str.replace('Z', '+00:00'))
                             if expires_date > timezone.now():
-                                active_plan = "creator"
+                                active_plan = "master"
                                 max_expiration = expires_date
+                                break
                         else:
-                            active_plan = "creator"
+                            active_plan = "master"
+                            break
+
+                if not active_plan:
+                    for ident in creator_identifiers:
+                        ent = entitlements.get(ident)
+                        if ent:
+                            expires_date_str = ent.get("expires_date")
+                            if expires_date_str:
+                                expires_date = datetime.datetime.fromisoformat(expires_date_str.replace('Z', '+00:00'))
+                                if expires_date > timezone.now():
+                                    active_plan = "creator"
+                                    max_expiration = expires_date
+                                    break
+                            else:
+                                active_plan = "creator"
+                                break
 
                 if active_plan:
                     subscription.status = 'active'

@@ -49,12 +49,14 @@ def revenuecat_webhook(request):
 
     try:
         payload = json.loads(request.body)
+        logger.info(f"RevenueCat Webhook received: {json.dumps(payload)}")
         event = payload.get('event', {})
         event_id = event.get('id')
     except json.JSONDecodeError:
         return HttpResponseBadRequest("Invalid JSON")
 
     if not event_id:
+        logger.warning("RevenueCat Webhook: Missing event ID in payload")
         return HttpResponse(status=200)
 
     try:
@@ -64,10 +66,16 @@ def revenuecat_webhook(request):
         return HttpResponse(status=200)
 
     app_user_id = event.get('app_user_id')
+    event_type = event.get('type')
+
+    if not app_user_id:
+        logger.warning(f"RevenueCat Webhook: Missing app_user_id for event {event_type}")
+        return HttpResponse(status=200)
 
     if not str(app_user_id).isdigit():
-        logger.info(f"Ignoring non-integer app_user_id: {app_user_id}")
+        logger.info(f"Ignoring non-integer app_user_id: {app_user_id} for event {event_type}")
         return HttpResponse(status=200)
+        
     try:
         user_id = int(app_user_id)
         user = User.objects.get(id=user_id)
@@ -75,19 +83,25 @@ def revenuecat_webhook(request):
         logger.error(f"RevenueCat Webhook: Could not find Django User for app_user_id='{app_user_id}'")
         return HttpResponse(status=200)
 
-    type = event.get('type')
     entitlement_ids = event.get('entitlement_ids', [])
     expiration_at_ms = event.get('expiration_at_ms')
     
     subscription, _ = Subscription.objects.get_or_create(user=user)
     
     new_plan = "trial" 
+    master_identifiers = ["pro max", "pro_max", "master", "story_master", "story master"]
+    creator_identifiers = ["pro", "creator", "story_creator", "story creator"]
     
-    if "pro max" in entitlement_ids or "pro_max" in entitlement_ids:
+    if any(id in entitlement_ids for id in master_identifiers):
         new_plan = "master"
-    elif "pro" in entitlement_ids:
+    elif any(id in entitlement_ids for id in creator_identifiers):
         new_plan = "creator"
-    if type in ['INITIAL_PURCHASE', 'RENEWAL', 'UNCANCELLATION', 'PRODUCT_CHANGE']:
+
+    logger.info(f"Processing event {event_type} for User {user.id}. Entitlements: {entitlement_ids}. Detected Plan: {new_plan}")
+
+    update_types = ['INITIAL_PURCHASE', 'RENEWAL', 'UNCANCELLATION', 'PRODUCT_CHANGE', 'TEST']
+    
+    if event_type in update_types:
         subscription.status = 'active'
         subscription.plan = new_plan
         if expiration_at_ms:
@@ -95,11 +109,13 @@ def revenuecat_webhook(request):
                 expiration_at_ms / 1000.0, 
                 tz=datetime.timezone.utc
             )
+        elif event_type == 'TEST' and not expiration_at_ms:
+            subscription.current_period_end = timezone.now() + datetime.timedelta(days=30)
         
-    elif type in ['CANCELLATION']:
-        pass
+    elif event_type in ['CANCELLATION']:
+        logger.info(f"User {user.id} cancelled. Status remains active until expiration.")
         
-    elif type in ['EXPIRATION']:
+    elif event_type in ['EXPIRATION']:
         subscription.status = 'expired'
         subscription.plan = 'trial'
         subscription.current_period_end = timezone.now()
@@ -107,7 +123,7 @@ def revenuecat_webhook(request):
     subscription.revenue_cat_id = app_user_id
     subscription.save()
     
-    logger.info(f"Updated subscription for User {user.id} to {subscription.plan} via RevenueCat (Entitlements: {entitlement_ids}).")
+    logger.info(f"Updated subscription for User {user.id} to {subscription.plan} via RevenueCat.")
     _send_subscription_update(subscription)
 
     return HttpResponse(status=200)
