@@ -8,15 +8,14 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
-from rest_framework_simplejwt.tokens import RefreshToken
 from django.utils.translation import gettext as _ 
 import logging
-
-from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
-from allauth.socialaccount.providers.apple.views import AppleOAuth2Adapter
-from allauth.socialaccount.providers.apple.client import AppleOAuth2Client
-from allauth.socialaccount.providers.oauth2.client import OAuth2Client
-
+import requests
+import jwt
+from django.db import transaction
+from jwt.algorithms import RSAAlgorithm
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token as google_id_token
 from .utils import get_client_ip, send_email
 from .models import AuthToken, UserProfile, PasswordHistory, UserActivityLog
 from .serializers import (
@@ -30,9 +29,6 @@ from .serializers import (
     PasswordResetFormSerializer,
     FCMDeviceSerializer
 )
-from subscription.models import Subscription
-from django.utils import timezone
-from datetime import timedelta
 from django.core.cache import cache
 from rest_framework.throttling import ScopedRateThrottle
 from notifications.tasks import create_and_send_notification_task
@@ -196,7 +192,7 @@ class PasswordResetInitiateAPIView(APIView):
                 token = AuthToken.objects.create(user=user, token_type='password_reset')
                 reset_path = reverse('password_reset_confirm', kwargs={'token': token.token})
                 reset_url = f"{settings.BACKEND_BASE_URL}{reset_path}"
-                send_email('Password Reset Request', f'Click to reset: {reset_url}', [user.email])
+                send_email('Password Reset Request', f'Click to reset: {reset_url}',[user.email])
             except User.DoesNotExist:
                 pass
         return Response({'message': _('If an account exists, a reset link has been sent.')}, status=status.HTTP_200_OK)
@@ -246,7 +242,7 @@ class PasswordResetConfirmView(APIView):
             return render(request, 'verification/verification_error.html', context, status=status.HTTP_400_BAD_REQUEST)
 
 class UserActivityLogAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes =[IsAuthenticated]
     def get(self, request):
         logs = UserActivityLog.objects.filter(user=request.user).order_by('-timestamp')
         serializer = UserActivityLogSerializer(logs, many=True)
@@ -260,86 +256,141 @@ class DeleteAccountView(APIView):
 
 class GoogleLoginView(APIView):
     permission_classes = [AllowAny]
+
     def post(self, request):
-        access_token = request.data.get("access_token")
-        if not access_token:
-            return Response({"detail": _("An access token from Google is required.")}, status=status.HTTP_400_BAD_REQUEST)
+        token_str = request.data.get("id_token")
+        if not token_str:
+            return Response({"detail": _("id_token is required")}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
-            adapter = GoogleOAuth2Adapter(request)
-            app = adapter.get_provider().get_app(request)
-            client = OAuth2Client(
-                request, app.client_id, app.secret,
-                adapter.access_token_method, adapter.access_token_url,
-                adapter.callback_url, adapter.scope
-            )
-            social_token = client.parse_token({"access_token": access_token})
-            social_token.app = app
-            login = adapter.complete_login(request, app, social_token)
-            login.state = {} 
-            login.save(request)
-            user = login.user
-            refresh = RefreshToken.for_user(user)
-            access_token_obj = refresh.access_token
-            access_token_obj['username'] = user.username
-            try:
-                subscription = user.subscription
-                access_token_obj['plan'] = subscription.plan
-                access_token_obj['subscription_status'] = subscription.status
-            except (AttributeError, User.subscription.RelatedObjectDoesNotExist):
-                access_token_obj['plan'] = None
-                access_token_obj['subscription_status'] = 'inactive'
-            
-            return Response({'refresh': str(refresh), 'access': str(access_token_obj)}, status=status.HTTP_200_OK)
+            decoded = {}
+            if token_str.startswith("ya29"):
+                user_info_resp = requests.get(f"https://www.googleapis.com/oauth2/v3/userinfo?access_token={token_str}")
+                user_info_resp.raise_for_status()
+                decoded = user_info_resp.json()
+            else:
+                decoded = google_id_token.verify_oauth2_token(
+                    token_str,
+                    google_requests.Request(),
+                    settings.GOOGLE_CLIENT_ID
+                )
+                if decoded.get("aud") != settings.GOOGLE_CLIENT_ID:
+                    return Response({"detail": _("Invalid token audience")}, status=status.HTTP_401_UNAUTHORIZED)
+
+            if not decoded.get("email_verified", False):
+                return Response({"detail": _("Google email not verified")}, status=status.HTTP_401_UNAUTHORIZED)
+
+            email = decoded.get("email")
+            if not email:
+                return Response({"detail": _("Email not provided by Google")}, status=status.HTTP_400_BAD_REQUEST)
+
+            first_name = decoded.get("given_name", "")
+            last_name = decoded.get("family_name", "")
+
+            with transaction.atomic():
+                user, created = User.objects.get_or_create(
+                    email=email,
+                    defaults={
+                        "username": email,
+                        "first_name": first_name,
+                        "last_name": last_name,
+                        "is_active": True
+                    }
+                )
+
+            if not user.is_active:
+                return Response({"detail": _("Account is disabled")}, status=status.HTTP_403_FORBIDDEN)
+
+            refresh = MyTokenObtainPairSerializer.get_token(user)
+            tokens = {'refresh': str(refresh), 'access': str(refresh.access_token)}
+            return Response(tokens, status=status.HTTP_200_OK)
+
+        except ValueError as e:
+            logger.warning(f"Google login invalid token: {e}")
+            return Response({"detail": _("Invalid or expired Google token")}, status=status.HTTP_401_UNAUTHORIZED)
         except Exception as e:
-            logger.error(f"Google authentication error: {e}")
-            return Response({"detail": _("An error occurred during Google authentication. Please try again.")}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"Google authentication failed: {e}")
+            return Response({"detail": _("Google authentication failed")}, status=status.HTTP_400_BAD_REQUEST)
+
 
 class AppleLoginView(APIView):
-    permission_classes = [AllowAny]
-    
+    permission_classes =[AllowAny]
+    APPLE_KEYS_CACHE_KEY = "apple_public_keys"
+    APPLE_KEYS_URL = "https://appleid.apple.com/auth/keys"
+
     def post(self, request):
-        access_token = request.data.get("access_token")
-        id_token = request.data.get("id_token")
-        
-        if not access_token and not id_token:
-            return Response({"detail": _("An access_token or id_token is required.")}, status=status.HTTP_400_BAD_REQUEST)
-            
+        id_token_str = request.data.get("id_token")
+        if not id_token_str:
+            return Response({"detail": _("id_token is required")}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
-            adapter = AppleOAuth2Adapter(request)
-            app = adapter.get_provider().get_app(request)
-            client = AppleOAuth2Client(
-                request, app.client_id, app.secret,
-                adapter.access_token_method, adapter.access_token_url,
-                adapter.callback_url, adapter.scope
-            )
-            
-            token_payload = {}
-            if access_token:
-                token_payload["code"] = access_token
-            if id_token:
-                token_payload["id_token"] = id_token
-                
-            social_token = client.parse_token(token_payload)
-            social_token.app = app
-            
-            login = adapter.complete_login(request, app, social_token)
-            login.state = {} 
-            login.save(request)
-            user = login.user
-            
-            refresh = RefreshToken.for_user(user)
-            access_token_obj = refresh.access_token
-            access_token_obj['username'] = user.username
-            try:
-                subscription = user.subscription
-                access_token_obj['plan'] = subscription.plan
-                access_token_obj['subscription_status'] = subscription.status
-            except (AttributeError, User.subscription.RelatedObjectDoesNotExist):
-                access_token_obj['plan'] = None
-                access_token_obj['subscription_status'] = 'inactive'
-            
-            return Response({'refresh': str(refresh), 'access': str(access_token_obj)}, status=status.HTTP_200_OK)
-            
+            decoded = self._verify_apple_token(id_token_str)
+        except ValueError as e:
+            logger.warning(f"Apple login invalid token: {e}")
+            return Response({"detail": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
         except Exception as e:
-            logger.error(f"Apple authentication error: {e}")
-            return Response({"detail": _("An error occurred during Apple authentication. Please try again.")}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"Apple token verification failed: {e}")
+            return Response({"detail": _("Apple authentication failed")}, status=status.HTTP_400_BAD_REQUEST)
+
+        apple_user_id = decoded.get("sub")
+        if not apple_user_id:
+            return Response({"detail": _("Invalid token: missing sub")}, status=status.HTTP_400_BAD_REQUEST)
+
+        email = decoded.get("email") or request.data.get("email")
+
+        try:
+            with transaction.atomic():
+                user, created = self._get_or_create_user(apple_user_id, email)
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error(f"Apple user creation failed: {e}")
+            return Response({"detail": _("Apple authentication failed")}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not user.is_active:
+            return Response({"detail": _("Account is disabled")}, status=status.HTTP_403_FORBIDDEN)
+
+        refresh = MyTokenObtainPairSerializer.get_token(user)
+        tokens = {'refresh': str(refresh), 'access': str(refresh.access_token)}
+        return Response(tokens, status=status.HTTP_200_OK)
+
+    def _verify_apple_token(self, id_token_str: str) -> dict:
+        apple_keys = cache.get(self.APPLE_KEYS_CACHE_KEY)
+        if not apple_keys:
+            response = requests.get(self.APPLE_KEYS_URL, timeout=5)
+            response.raise_for_status()
+            apple_keys = response.json()
+            cache.set(self.APPLE_KEYS_CACHE_KEY, apple_keys, timeout=3600 * 24)
+
+        headers = jwt.get_unverified_header(id_token_str)
+        kid = headers.get("kid")
+
+        matching_key = next((k for k in apple_keys["keys"] if k["kid"] == kid), None)
+        if not matching_key:
+            cache.delete(self.APPLE_KEYS_CACHE_KEY)
+            raise ValueError("Apple public key not found — please retry")
+
+        public_key = RSAAlgorithm.from_jwk(matching_key)
+
+        decoded = jwt.decode(
+            id_token_str,
+            public_key,
+            algorithms=["RS256"],
+            audience=settings.APPLE_CLIENT_ID,
+            issuer="https://appleid.apple.com"
+        )
+        return decoded
+
+    def _get_or_create_user(self, apple_user_id: str, email: str | None):
+        if not email:
+            raise ValueError("Email is required on first Apple login")
+
+        user = User.objects.filter(email=email).first()
+        if user:
+            return user, False
+
+        return User.objects.create(
+            username=email,
+            email=email,
+            is_active=True,
+        ), True

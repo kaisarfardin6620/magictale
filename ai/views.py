@@ -55,7 +55,7 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         project.progress = 1
         project.error = ""
         project.save(update_fields=["status", "started_at", "progress", "error"])
-        transaction.on_commit(lambda: start_story_generation_pipeline(project.id))
+        start_story_generation_pipeline(project.id)
 
     def retrieve(self, request, *args, **kwargs):
         pk = kwargs.get('pk')

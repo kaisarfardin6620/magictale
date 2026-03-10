@@ -1,6 +1,6 @@
 import openai
 from celery import shared_task, chain, group
-from asgiref.sync import async_to_sync
+import asyncio
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from .models import StoryProject
@@ -41,7 +41,7 @@ RETRYABLE_EXCEPTIONS = (
 def on_pipeline_failure(self, exc, task_id, args, kwargs, einfo):
     project_id = args[0]
     print(f"PIPELINE FAILED: Task {self.name} for project {project_id} failed permanently. Reason: {exc}")
-    async_to_sync(handle_generation_failure)(project_id, exc)
+    asyncio.run(handle_generation_failure)(project_id, exc)
 
 @shared_task
 def update_user_usage_task(project_id: int):
@@ -75,7 +75,7 @@ def generate_text_task(self, project_id: int):
         return project_id
 
     print(f"Starting STAGE 1: TEXT for project {project_id}")
-    async_to_sync(generate_text_logic)(project_id)
+    asyncio.run(generate_text_logic(project_id))
     print(f"Finished STAGE 1: TEXT for project {project_id}")
     
     generate_variants_task.delay(project_id)
@@ -115,7 +115,7 @@ def generate_variants_task(project_id: int):
         choices = theme_data['choices'][:3]
         
         for choice in choices:
-            variant_project = async_to_sync(_create_variant_project)(project, choice['name'])
+            variant_project = asyncio.run(_create_variant_project)(project, choice['name'])
             start_story_remix_pipeline(variant_project.id, choice['id'])
             
     except StoryProject.DoesNotExist:
@@ -194,7 +194,7 @@ def remix_text_task(self, project_id: int, choice_id: str):
         return project_id
 
     print(f"Starting REMIX: TEXT for project {project_id}")
-    async_to_sync(remix_text_logic)(project_id, choice_id)
+    asyncio.run(remix_text_logic)(project_id, choice_id)
     print(f"Finished REMIX: TEXT for project {project_id}")
     return project_id
 
@@ -304,7 +304,7 @@ def generate_metadata_and_cover_task(self, project_id: int):
 
     from .engine import generate_metadata_and_cover_logic
     print(f"Starting STAGE 2: METADATA/COVER for project {project_id}")
-    async_to_sync(generate_metadata_and_cover_logic)(project_id)
+    asyncio.run(generate_metadata_and_cover_logic)(project_id)
     print(f"Finished STAGE 2: METADATA/COVER for project {project_id}")
     
     pipeline = chain(
@@ -326,11 +326,11 @@ def generate_audio_task(self, project_id: int):
         return project_id
 
     print(f"Starting STAGE 3: AUDIO for project {project_id}")
-    async_to_sync(generate_audio_logic)(project_id)
+    asyncio.run(generate_audio_logic)(project_id)
     print(f"Finished STAGE 3: AUDIO for project {project_id}")
-    async_to_sync(_cleanup_audio_chunks)(project_id)
+    asyncio.run(_cleanup_audio_chunks)(project_id)
     
-    project = async_to_sync(_reload_project)(project_id)
+    project = asyncio.run(_reload_project)(project_id)
     if project and project.started_at and project.finished_at:
         duration = project.finished_at - project.started_at
         total_seconds = duration.total_seconds()
@@ -402,7 +402,7 @@ def cleanup_stalled_projects_task():
                         if default_storage.exists(path):
                             default_storage.delete(path)
                 
-                async_to_sync(_cleanup_audio_chunks)(project.id)
+                asyncio.run(_cleanup_audio_chunks)(project.id)
                 
             except Exception as e:
                 print(f"Error cleaning up files for project {project.id}: {e}")

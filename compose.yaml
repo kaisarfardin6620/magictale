@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     init: true
     env_file: ./.env
-    entrypoint: /app/docker-entrypoint.sh
+    entrypoint: /usr/local/bin/docker-entrypoint.sh
     command: ["daphne", "-b", "0.0.0.0", "-p", "8000", "magictale.asgi:application"]
     volumes:
       - .:/app

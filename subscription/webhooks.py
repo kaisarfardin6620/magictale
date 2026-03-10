@@ -64,7 +64,10 @@ def revenuecat_webhook(request):
         return HttpResponse(status=200)
 
     app_user_id = event.get('app_user_id')
-    
+
+    if not str(app_user_id).isdigit():
+        logger.info(f"Ignoring non-integer app_user_id: {app_user_id}")
+        return HttpResponse(status=200)
     try:
         user_id = int(app_user_id)
         user = User.objects.get(id=user_id)

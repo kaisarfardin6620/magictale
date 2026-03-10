@@ -284,16 +284,10 @@ async def _cleanup_audio_chunks(project_id: int):
     try:
         @sync_to_async
         def delete_chunks():
-            try:
-                page_indices = list(StoryPage.objects.filter(project_id=project_id).values_list('index', flat=True))
-                
-                for index in page_indices:
-                    filename = f"audio/chunks/story_{project_id}_page_{index}.mp3"
-                    if default_storage.exists(filename):
-                        default_storage.delete(filename)
-            except Exception as e:
-                logger.warning(f"Error inside delete_chunks wrapper: {e}")
-
+            for index in range(1, 51):
+                filename = f"audio/chunks/story_{project_id}_page_{index}.mp3"
+                if default_storage.exists(filename):
+                    default_storage.delete(filename)
         await delete_chunks()
         logger.info(f"Cleaned up audio chunks for project {project_id}")
     except Exception as e:

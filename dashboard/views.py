@@ -196,8 +196,8 @@ class AdminProfileView(APIView):
 
     def get(self, request):
         user = User.objects.select_related('profile').get(id=request.user.id)
-        UserProfile.objects.get_or_create(user=user)
-        user = User.objects.select_related('profile').get(id=request.user.id)
+        if not hasattr(user, 'profile'):
+            UserProfile.objects.create(user=user)
         serializer = AdminProfileSerializer(user)
         return Response(serializer.data)
 
