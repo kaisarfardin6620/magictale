@@ -1,0 +1,3059 @@
+openapi: 3.0.3
+info:
+  title: MagicTale API API
+  version: 1.0.0
+  description: API documentation for MagicTale.
+paths:
+  /api/ai/generation-options/:
+    get:
+      operationId: ai_generation_options_retrieve
+      tags:
+      - ai
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationOptionsResponse'
+          description: ''
+  /api/ai/stories/:
+    get:
+      operationId: ai_stories_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      tags:
+      - ai
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedStoryProjectListList'
+          description: ''
+    post:
+      operationId: ai_stories_create
+      tags:
+      - ai
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoryProjectCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/StoryProjectCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/StoryProjectCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryProjectCreate'
+          description: ''
+  /api/ai/stories/{id}/:
+    get:
+      operationId: ai_stories_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this story project.
+        required: true
+      tags:
+      - ai
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryProjectDetail'
+          description: ''
+    put:
+      operationId: ai_stories_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this story project.
+        required: true
+      tags:
+      - ai
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoryProjectDetailRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/StoryProjectDetailRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/StoryProjectDetailRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryProjectDetail'
+          description: ''
+    patch:
+      operationId: ai_stories_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this story project.
+        required: true
+      tags:
+      - ai
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedStoryProjectDetailRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedStoryProjectDetailRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedStoryProjectDetailRequest'
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryProjectDetail'
+          description: ''
+    delete:
+      operationId: ai_stories_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this story project.
+        required: true
+      tags:
+      - ai
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/ai/stories/{id}/cancel/:
+    post:
+      operationId: ai_stories_cancel_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this story project.
+        required: true
+      tags:
+      - ai
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryProjectDetail'
+          description: ''
+  /api/ai/stories/{id}/choices/:
+    get:
+      operationId: ai_stories_choices_list
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this story project.
+        required: true
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      tags:
+      - ai
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedThemeChoicesList'
+          description: ''
+        '404':
+          description: Theme choices not found.
+  /api/ai/stories/{id}/save-to-library/:
+    post:
+      operationId: ai_stories_save_to_library_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this story project.
+        required: true
+      tags:
+      - ai
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Story saved to library.
+        '400':
+          description: Story cannot be saved.
+  /api/ai/stories/latest/:
+    get:
+      operationId: ai_stories_latest_retrieve
+      tags:
+      - ai
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryProjectDetail'
+          description: ''
+        '404':
+          description: No stories found.
+  /api/auth/activity-log/:
+    get:
+      operationId: auth_activity_log_list
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserActivityLog'
+          description: ''
+  /api/auth/apple/:
+    post:
+      operationId: auth_apple_create
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppleLoginRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AppleLoginRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AppleLoginRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppleLoginResponse'
+          description: ''
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+  /api/auth/delete-account/:
+    delete:
+      operationId: auth_delete_account_destroy
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '204':
+          description: Account deleted successfully.
+  /api/auth/devices/register/:
+    post:
+      operationId: auth_devices_register_create
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FCMDeviceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FCMDeviceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FCMDeviceRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Device registered successfully.
+        '400':
+          description: Validation errors.
+  /api/auth/google/:
+    post:
+      operationId: auth_google_create
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleLoginRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/GoogleLoginRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/GoogleLoginRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleLoginResponse'
+          description: ''
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+  /api/auth/login/:
+    post:
+      operationId: auth_login_create
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MyTokenObtainPairRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MyTokenObtainPairRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MyTokenObtainPairRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyTokenObtainPair'
+          description: ''
+  /api/auth/login/refresh/:
+    post:
+      operationId: auth_login_refresh_create
+      description: |-
+        Takes a refresh type JSON web token and returns an access type JSON web
+        token if the refresh token is valid.
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /api/auth/logout/:
+    post:
+      operationId: auth_logout_create
+      description: |-
+        Takes a token and blacklists it. Must be used with the
+        `rest_framework_simplejwt.token_blacklist` app installed.
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenBlacklistRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenBlacklistRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenBlacklistRequest'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/auth/password-reset/:
+    post:
+      operationId: auth_password_reset_create
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      - {}
+      responses:
+        '200':
+          description: If an account exists, a reset link has been sent.
+  /api/auth/profile/:
+    get:
+      operationId: auth_profile_retrieve
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+          description: ''
+        '404':
+          description: User profile not found.
+    put:
+      operationId: auth_profile_update
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnifiedProfileUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UnifiedProfileUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UnifiedProfileUpdateRequest'
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Profile updated successfully.
+        '400':
+          description: Validation errors.
+        '404':
+          description: User profile not found.
+  /api/auth/resend-verification/:
+    post:
+      operationId: auth_resend_verification_create
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendVerificationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ResendVerificationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ResendVerificationRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      - {}
+      responses:
+        '200':
+          description: Verification email has been resent.
+        '400':
+          description: Account already active or validation errors.
+        '404':
+          description: User not found.
+  /api/auth/signup/:
+    post:
+      operationId: auth_signup_create
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      - {}
+      responses:
+        '201':
+          description: User created successfully. Please check your email for verification.
+        '400':
+          description: Validation errors.
+  /api/dashboard/languages/:
+    get:
+      operationId: dashboard_languages_list
+      tags:
+      - dashboard
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LanguageOption'
+          description: ''
+  /api/dashboard/profile/:
+    get:
+      operationId: dashboard_profile_retrieve
+      tags:
+      - dashboard
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminProfile'
+          description: ''
+    put:
+      operationId: dashboard_profile_update
+      tags:
+      - dashboard
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminProfileUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminProfileUpdateRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminProfileUpdateRequest'
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminProfile'
+          description: ''
+        '400':
+          description: Validation errors.
+  /api/dashboard/reports/:
+    get:
+      operationId: dashboard_reports_retrieve
+      tags:
+      - dashboard
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsResponse'
+          description: ''
+  /api/dashboard/settings/:
+    get:
+      operationId: dashboard_settings_retrieve
+      tags:
+      - dashboard
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteSettings'
+          description: ''
+    put:
+      operationId: dashboard_settings_update
+      tags:
+      - dashboard
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SiteSettingsRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SiteSettingsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SiteSettingsRequest'
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteSettings'
+          description: ''
+    patch:
+      operationId: dashboard_settings_partial_update
+      tags:
+      - dashboard
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedSiteSettingsRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedSiteSettingsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedSiteSettingsRequest'
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteSettings'
+          description: ''
+  /api/dashboard/stats/:
+    get:
+      operationId: dashboard_stats_retrieve
+      tags:
+      - dashboard
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStatsResponse'
+          description: ''
+  /api/dashboard/subscriptions/:
+    get:
+      operationId: dashboard_subscriptions_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - dashboard
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedSubscriptionManagementList'
+          description: ''
+  /api/dashboard/timezones/:
+    get:
+      operationId: dashboard_timezones_retrieve
+      tags:
+      - dashboard
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+          description: List of available Timezones
+  /api/dashboard/users/:
+    get:
+      operationId: dashboard_users_list
+      parameters:
+      - in: query
+        name: is_active
+        schema:
+          type: boolean
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - dashboard
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDashboardUserList'
+          description: ''
+    post:
+      operationId: dashboard_users_create
+      tags:
+      - dashboard
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DashboardUserRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DashboardUserRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DashboardUserRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardUser'
+          description: ''
+  /api/dashboard/users/{id}/:
+    get:
+      operationId: dashboard_users_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this user.
+        required: true
+      tags:
+      - dashboard
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardUser'
+          description: ''
+    put:
+      operationId: dashboard_users_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this user.
+        required: true
+      tags:
+      - dashboard
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DashboardUserRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DashboardUserRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DashboardUserRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardUser'
+          description: ''
+    patch:
+      operationId: dashboard_users_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this user.
+        required: true
+      tags:
+      - dashboard
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedDashboardUserRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedDashboardUserRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedDashboardUserRequest'
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardUser'
+          description: ''
+    delete:
+      operationId: dashboard_users_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this user.
+        required: true
+      tags:
+      - dashboard
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/dashboard/users/{id}/approve/:
+    post:
+      operationId: dashboard_users_approve_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this user.
+        required: true
+      tags:
+      - dashboard
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: User approved and notified successfully.
+        '400':
+          description: User is already active.
+  /api/dashboard/users/{id}/deactivate/:
+    post:
+      operationId: dashboard_users_deactivate_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this user.
+        required: true
+      tags:
+      - dashboard
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: User has been deactivated.
+  /api/dashboard/users/{id}/deny/:
+    post:
+      operationId: dashboard_users_deny_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this user.
+        required: true
+      tags:
+      - dashboard
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: User denied and deleted.
+  /api/notifications/:
+    get:
+      operationId: notifications_list
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: ID of the notification
+        required: true
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      tags:
+      - notifications
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedNotificationList'
+          description: ''
+    post:
+      operationId: notifications_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: ID of the notification
+        required: true
+      tags:
+      - notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+  /api/notifications/{id}/:
+    get:
+      operationId: notifications_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: ID of the notification
+        required: true
+      tags:
+      - notifications
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+    delete:
+      operationId: notifications_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: ID of the notification
+        required: true
+      tags:
+      - notifications
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/notifications/{id}/mark-read/:
+    post:
+      operationId: notifications_mark_read_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: ID of the notification
+        required: true
+      tags:
+      - notifications
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '204':
+          description: Notification marked as read
+  /api/notifications/mark-all-read/:
+    post:
+      operationId: notifications_mark_all_read_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: ID of the notification
+        required: true
+      tags:
+      - notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+  /api/subscriptions/:
+    get:
+      operationId: subscriptions_list
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: ID of the subscription
+        required: true
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      tags:
+      - subscriptions
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedSubscriptionList'
+          description: ''
+    post:
+      operationId: subscriptions_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: ID of the subscription
+        required: true
+      tags:
+      - subscriptions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SubscriptionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SubscriptionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+          description: ''
+  /api/subscriptions/{id}/:
+    get:
+      operationId: subscriptions_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: ID of the subscription
+        required: true
+      tags:
+      - subscriptions
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+          description: ''
+    put:
+      operationId: subscriptions_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: ID of the subscription
+        required: true
+      tags:
+      - subscriptions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SubscriptionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SubscriptionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+          description: ''
+    patch:
+      operationId: subscriptions_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: ID of the subscription
+        required: true
+      tags:
+      - subscriptions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedSubscriptionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedSubscriptionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedSubscriptionRequest'
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+          description: ''
+    delete:
+      operationId: subscriptions_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: ID of the subscription
+        required: true
+      tags:
+      - subscriptions
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/subscriptions/status/:
+    get:
+      operationId: subscriptions_status_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: ID of the subscription
+        required: true
+      tags:
+      - subscriptions
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+          description: ''
+  /api/subscriptions/sync/:
+    post:
+      operationId: subscriptions_sync_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: ID of the subscription
+        required: true
+      tags:
+      - subscriptions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SubscriptionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SubscriptionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+          description: ''
+  /api/subscriptions/webhooks/revenuecat/:
+    post:
+      operationId: subscriptions_webhooks_revenuecat_create
+      tags:
+      - subscriptions
+      security:
+      - BearerAuth: []
+      - {}
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: Bad Request
+        '403':
+          description: Forbidden
+  /api/support/legal/manage/:
+    post:
+      operationId: support_legal_manage_create
+      tags:
+      - support
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminLegalDocumentRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminLegalDocumentRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminLegalDocumentRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalDocument'
+          description: ''
+        '400':
+          description: Validation errors or invalid doc_type.
+  /api/support/legal/public/{doc_type}/:
+    get:
+      operationId: support_legal_public_retrieve
+      parameters:
+      - in: path
+        name: doc_type
+        schema:
+          type: string
+        required: true
+      tags:
+      - support
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalDocument'
+          description: ''
+  /api/support/reports/:
+    get:
+      operationId: support_reports_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      tags:
+      - support
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUserReportList'
+          description: ''
+    post:
+      operationId: support_reports_create
+      tags:
+      - support
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserReportRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserReportRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserReportRequest'
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserReport'
+          description: ''
+  /api/support/reports/{id}/:
+    get:
+      operationId: support_reports_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this user report.
+        required: true
+      tags:
+      - support
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserReport'
+          description: ''
+    put:
+      operationId: support_reports_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this user report.
+        required: true
+      tags:
+      - support
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserReportRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserReportRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserReportRequest'
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserReport'
+          description: ''
+    patch:
+      operationId: support_reports_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this user report.
+        required: true
+      tags:
+      - support
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUserReportRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUserReportRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUserReportRequest'
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserReport'
+          description: ''
+    delete:
+      operationId: support_reports_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this user report.
+        required: true
+      tags:
+      - support
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/support/reports/{id}/resolve/:
+    post:
+      operationId: support_reports_resolve_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this user report.
+        required: true
+      tags:
+      - support
+      security:
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Report marked as resolved.
+components:
+  schemas:
+    AdminLegalDocumentRequestRequest:
+      type: object
+      properties:
+        doc_type:
+          type: string
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        content:
+          type: string
+          minLength: 1
+        version:
+          type: string
+          minLength: 1
+      required:
+      - doc_type
+    AdminProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          title: Email address
+          maxLength: 254
+        phone_number:
+          type: string
+          readOnly: true
+        profile_picture_url:
+          type: string
+          readOnly: true
+      required:
+      - id
+      - phone_number
+      - profile_picture_url
+    AdminProfileUpdateRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          title: Email address
+          maxLength: 254
+        phone_number:
+          type: string
+        profile_picture:
+          type: string
+          format: binary
+          writeOnly: true
+          nullable: true
+    AnalyticsResponse:
+      type: object
+      properties:
+        user_growth_over_time:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        stories_created_over_time:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        top_performing_stories:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - stories_created_over_time
+      - top_performing_stories
+      - user_growth_over_time
+    AppleLoginRequestRequest:
+      type: object
+      properties:
+        id_token:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          nullable: true
+          minLength: 1
+      required:
+      - id_token
+    AppleLoginResponse:
+      type: object
+      properties:
+        refresh:
+          type: string
+        access:
+          type: string
+      required:
+      - access
+      - refresh
+    ArtStyleOption:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        image_url:
+          type: string
+      required:
+      - description
+      - id
+      - image_url
+      - name
+    DashboardStatsResponse:
+      type: object
+      properties:
+        stats:
+          type: object
+          additionalProperties: {}
+        recent_signups:
+          type: object
+          additionalProperties: {}
+        recent_stories:
+          type: object
+          additionalProperties: {}
+      required:
+      - recent_signups
+      - recent_stories
+      - stats
+    DashboardUser:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        profile_picture_url:
+          type: string
+          readOnly: true
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+          title: Email address
+          maxLength: 254
+        date:
+          type: string
+          format: date-time
+        plan:
+          type: string
+          readOnly: true
+          default: Free
+      required:
+      - date
+      - id
+      - name
+      - plan
+      - profile_picture_url
+    DashboardUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+          title: Email address
+          maxLength: 254
+        date:
+          type: string
+          format: date-time
+      required:
+      - date
+      - name
+    DocTypeEnum:
+      enum:
+      - privacy_policy
+      - terms_conditions
+      type: string
+      description: |-
+        * `privacy_policy` - Privacy Policy
+        * `terms_conditions` - Terms and Conditions
+    FCMDeviceRequest:
+      type: object
+      properties:
+        registration_id:
+          type: string
+          minLength: 1
+        type:
+          allOf:
+          - $ref: '#/components/schemas/TypeEnum'
+          default: web
+      required:
+      - registration_id
+    GenerationOptionsResponse:
+      type: object
+      properties:
+        themes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ThemeOption'
+        art_styles:
+          type: array
+          items:
+            $ref: '#/components/schemas/ArtStyleOption'
+        narrator_voices:
+          type: array
+          items:
+            $ref: '#/components/schemas/VoiceOption'
+      required:
+      - art_styles
+      - narrator_voices
+      - themes
+    GoogleLoginRequestRequest:
+      type: object
+      properties:
+        id_token:
+          type: string
+          minLength: 1
+      required:
+      - id_token
+    GoogleLoginResponse:
+      type: object
+      properties:
+        refresh:
+          type: string
+        access:
+          type: string
+      required:
+      - access
+      - refresh
+    Hero:
+      type: object
+      properties:
+        child_name:
+          type: string
+          nullable: true
+          maxLength: 100
+        age:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+        pronouns:
+          type: string
+          nullable: true
+          maxLength: 50
+        favorite_animal:
+          type: string
+          nullable: true
+          maxLength: 100
+        favorite_color:
+          type: string
+          nullable: true
+          maxLength: 50
+    HeroRequest:
+      type: object
+      properties:
+        child_name:
+          type: string
+          nullable: true
+          maxLength: 100
+        age:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+        pronouns:
+          type: string
+          nullable: true
+          maxLength: 50
+        favorite_animal:
+          type: string
+          nullable: true
+          maxLength: 100
+        favorite_color:
+          type: string
+          nullable: true
+          maxLength: 50
+    LanguageOption:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+      required:
+      - code
+      - name
+    LegalDocument:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        doc_type:
+          $ref: '#/components/schemas/DocTypeEnum'
+        title:
+          type: string
+          maxLength: 200
+        content: {}
+        last_updated:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - doc_type
+      - id
+      - last_updated
+      - title
+    LengthEnum:
+      enum:
+      - short
+      - medium
+      - long
+      type: string
+      description: |-
+        * `short` - short
+        * `medium` - medium
+        * `long` - long
+    MyTokenObtainPair:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+      required:
+      - email
+    MyTokenObtainPairRequest:
+      type: object
+      properties:
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+        email:
+          type: string
+          format: email
+          minLength: 1
+      required:
+      - email
+      - password
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        body:
+          type: string
+          readOnly: true
+        read:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        data:
+          readOnly: true
+          description: 'Optional data for deep-linking, e.g., {''type'': ''story'',
+            ''id'': 123}'
+      required:
+      - body
+      - created_at
+      - data
+      - id
+      - title
+    NotificationRequest:
+      type: object
+      properties:
+        read:
+          type: boolean
+    PaginatedDashboardUserList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardUser'
+    PaginatedNotificationList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+    PaginatedStoryProjectListList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoryProjectList'
+    PaginatedSubscriptionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Subscription'
+    PaginatedSubscriptionManagementList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubscriptionManagement'
+    PaginatedThemeChoicesList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ThemeChoices'
+    PaginatedUserReportList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserReport'
+    PasswordResetRequestRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 1
+      required:
+      - email
+    PatchedDashboardUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+          title: Email address
+          maxLength: 254
+        date:
+          type: string
+          format: date-time
+    PatchedSiteSettingsRequest:
+      type: object
+      properties:
+        application_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        application_logo:
+          type: string
+          format: binary
+          writeOnly: true
+          nullable: true
+        default_language:
+          type: string
+          minLength: 1
+          maxLength: 20
+        timezone:
+          type: string
+          minLength: 1
+          maxLength: 100
+    PatchedStoryProjectDetailRequest:
+      type: object
+      properties:
+        user:
+          type: integer
+        onboarding:
+          type: integer
+          nullable: true
+        is_saved:
+          type: boolean
+        title:
+          type: string
+          maxLength: 200
+        child_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        age:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        pronouns:
+          type: string
+          minLength: 1
+          maxLength: 50
+        favorite_animal:
+          type: string
+          minLength: 1
+          maxLength: 100
+        favorite_color:
+          type: string
+          minLength: 1
+          maxLength: 50
+        theme:
+          type: string
+          minLength: 1
+          maxLength: 80
+        custom_prompt:
+          type: string
+        art_style:
+          type: string
+          minLength: 1
+          maxLength: 80
+        language:
+          type: string
+          minLength: 1
+          maxLength: 40
+        voice:
+          type: string
+          maxLength: 80
+        length:
+          $ref: '#/components/schemas/LengthEnum'
+        difficulty:
+          type: integer
+          maximum: 32767
+          minimum: 0
+        model_used:
+          type: string
+          minLength: 1
+          maxLength: 80
+        synopsis:
+          type: string
+        tags:
+          type: string
+          maxLength: 255
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        progress:
+          type: integer
+          maximum: 32767
+          minimum: 0
+        error:
+          type: string
+        read_count:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        likes_count:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        shares_count:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        text:
+          type: string
+        audio_duration_seconds:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+          description: The duration of the generated audio in seconds.
+    PatchedSubscriptionRequest:
+      type: object
+      properties:
+        plan:
+          $ref: '#/components/schemas/PlanEnum'
+        status:
+          type: string
+          minLength: 1
+          maxLength: 50
+        current_period_end:
+          type: string
+          format: date-time
+          nullable: true
+        revenue_cat_id:
+          type: string
+          nullable: true
+          description: The App User ID in RevenueCat.
+          maxLength: 255
+    PatchedUserReportRequest:
+      type: object
+      properties:
+        message:
+          type: string
+          nullable: true
+        screenshot:
+          type: string
+          format: binary
+          writeOnly: true
+          nullable: true
+    PlanEnum:
+      enum:
+      - trial
+      - creator
+      - master
+      type: string
+      description: |-
+        * `trial` - Trial Period
+        * `creator` - Story Creator
+        * `master` - Story Master
+    Profile:
+      type: object
+      properties:
+        profile_picture:
+          type: string
+          readOnly: true
+        phone_number:
+          type: string
+          nullable: true
+          pattern: ^\+?[1-9]\d{1,14}$
+          maxLength: 20
+        allow_push_notifications:
+          type: boolean
+        subscription_active:
+          type: boolean
+          readOnly: true
+        current_plan:
+          type: string
+          nullable: true
+          readOnly: true
+        trial_end_date:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+      required:
+      - current_plan
+      - profile_picture
+      - subscription_active
+      - trial_end_date
+    ResendVerificationRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+      required:
+      - username
+    SignupRequest:
+      type: object
+      properties:
+        full_name:
+          type: string
+          writeOnly: true
+          minLength: 1
+        email:
+          type: string
+          format: email
+          minLength: 1
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - email
+      - full_name
+      - password
+    SiteSettings:
+      type: object
+      properties:
+        application_name:
+          type: string
+          maxLength: 100
+        application_logo_url:
+          type: string
+          nullable: true
+          readOnly: true
+        default_language:
+          type: string
+          maxLength: 20
+        timezone:
+          type: string
+          maxLength: 100
+      required:
+      - application_logo_url
+    SiteSettingsRequest:
+      type: object
+      properties:
+        application_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        application_logo:
+          type: string
+          format: binary
+          writeOnly: true
+          nullable: true
+        default_language:
+          type: string
+          minLength: 1
+          maxLength: 20
+        timezone:
+          type: string
+          minLength: 1
+          maxLength: 100
+    StatusEnum:
+      enum:
+      - pending
+      - running
+      - done
+      - failed
+      - canceled
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `running` - Running
+        * `done` - Done
+        * `failed` - Failed
+        * `canceled` - Canceled
+    StoryProjectCreate:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        theme:
+          type: string
+          maxLength: 80
+        custom_prompt:
+          type: string
+        art_style:
+          type: string
+          maxLength: 80
+        language:
+          type: string
+          maxLength: 40
+        voice:
+          type: string
+          maxLength: 80
+        length:
+          $ref: '#/components/schemas/LengthEnum'
+        difficulty:
+          type: integer
+          maximum: 32767
+          minimum: 0
+        model_used:
+          type: string
+          maxLength: 80
+      required:
+      - art_style
+      - id
+      - theme
+    StoryProjectCreateRequest:
+      type: object
+      properties:
+        hero:
+          allOf:
+          - $ref: '#/components/schemas/HeroRequest'
+          writeOnly: true
+        theme:
+          type: string
+          minLength: 1
+          maxLength: 80
+        custom_prompt:
+          type: string
+        art_style:
+          type: string
+          minLength: 1
+          maxLength: 80
+        language:
+          type: string
+          minLength: 1
+          maxLength: 40
+        voice:
+          type: string
+          maxLength: 80
+        length:
+          $ref: '#/components/schemas/LengthEnum'
+        difficulty:
+          type: integer
+          maximum: 32767
+          minimum: 0
+        model_used:
+          type: string
+          minLength: 1
+          maxLength: 80
+      required:
+      - art_style
+      - hero
+      - theme
+    StoryProjectDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        user:
+          type: integer
+        onboarding:
+          type: integer
+          nullable: true
+        is_saved:
+          type: boolean
+        title:
+          type: string
+          maxLength: 200
+        child_name:
+          type: string
+          maxLength: 100
+        age:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        pronouns:
+          type: string
+          maxLength: 50
+        favorite_animal:
+          type: string
+          maxLength: 100
+        favorite_color:
+          type: string
+          maxLength: 50
+        theme:
+          type: string
+          maxLength: 80
+        custom_prompt:
+          type: string
+        art_style:
+          type: string
+          maxLength: 80
+        language:
+          type: string
+          maxLength: 40
+        voice:
+          type: string
+          maxLength: 80
+        length:
+          $ref: '#/components/schemas/LengthEnum'
+        difficulty:
+          type: integer
+          maximum: 32767
+          minimum: 0
+        model_used:
+          type: string
+          maxLength: 80
+        synopsis:
+          type: string
+        tags:
+          type: string
+          maxLength: 255
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        progress:
+          type: integer
+          maximum: 32767
+          minimum: 0
+        error:
+          type: string
+        read_count:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        likes_count:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        shares_count:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        text:
+          type: string
+        image_url:
+          type: string
+          nullable: true
+          readOnly: true
+        audio_url:
+          type: string
+          nullable: true
+          readOnly: true
+        audio_duration_seconds:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+          description: The duration of the generated audio in seconds.
+        audio_error:
+          type: string
+          nullable: true
+          readOnly: true
+        page_count:
+          type: integer
+          readOnly: true
+        variants:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+          readOnly: true
+      required:
+      - age
+      - art_style
+      - audio_error
+      - audio_url
+      - child_name
+      - created_at
+      - favorite_animal
+      - favorite_color
+      - id
+      - image_url
+      - page_count
+      - pronouns
+      - theme
+      - user
+      - variants
+    StoryProjectDetailRequest:
+      type: object
+      properties:
+        user:
+          type: integer
+        onboarding:
+          type: integer
+          nullable: true
+        is_saved:
+          type: boolean
+        title:
+          type: string
+          maxLength: 200
+        child_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        age:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        pronouns:
+          type: string
+          minLength: 1
+          maxLength: 50
+        favorite_animal:
+          type: string
+          minLength: 1
+          maxLength: 100
+        favorite_color:
+          type: string
+          minLength: 1
+          maxLength: 50
+        theme:
+          type: string
+          minLength: 1
+          maxLength: 80
+        custom_prompt:
+          type: string
+        art_style:
+          type: string
+          minLength: 1
+          maxLength: 80
+        language:
+          type: string
+          minLength: 1
+          maxLength: 40
+        voice:
+          type: string
+          maxLength: 80
+        length:
+          $ref: '#/components/schemas/LengthEnum'
+        difficulty:
+          type: integer
+          maximum: 32767
+          minimum: 0
+        model_used:
+          type: string
+          minLength: 1
+          maxLength: 80
+        synopsis:
+          type: string
+        tags:
+          type: string
+          maxLength: 255
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        progress:
+          type: integer
+          maximum: 32767
+          minimum: 0
+        error:
+          type: string
+        read_count:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        likes_count:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        shares_count:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        text:
+          type: string
+        audio_duration_seconds:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+          description: The duration of the generated audio in seconds.
+      required:
+      - age
+      - art_style
+      - child_name
+      - favorite_animal
+      - favorite_color
+      - pronouns
+      - theme
+      - user
+    StoryProjectList:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        user:
+          type: integer
+        title:
+          type: string
+          maxLength: 200
+        child_name:
+          type: string
+          maxLength: 100
+        theme:
+          type: string
+          maxLength: 80
+        art_style:
+          type: string
+          maxLength: 80
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        is_saved:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        image_url:
+          type: string
+          nullable: true
+          readOnly: true
+        audio_url:
+          type: string
+          nullable: true
+          readOnly: true
+        synopsis:
+          type: string
+      required:
+      - art_style
+      - audio_url
+      - child_name
+      - created_at
+      - id
+      - image_url
+      - theme
+      - user
+    Subscription:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        plan:
+          $ref: '#/components/schemas/PlanEnum'
+        status:
+          type: string
+          maxLength: 50
+        current_period_end:
+          type: string
+          format: date-time
+          nullable: true
+        revenue_cat_id:
+          type: string
+          nullable: true
+          description: The App User ID in RevenueCat.
+          maxLength: 255
+      required:
+      - id
+      - plan
+    SubscriptionManagement:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        user_name:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        current_plan:
+          type: string
+        renewal_date:
+          type: string
+          nullable: true
+          readOnly: true
+        payment_method:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        status:
+          type: string
+      required:
+      - current_plan
+      - id
+      - payment_method
+      - renewal_date
+      - status
+      - user_name
+    SubscriptionRequest:
+      type: object
+      properties:
+        plan:
+          $ref: '#/components/schemas/PlanEnum'
+        status:
+          type: string
+          minLength: 1
+          maxLength: 50
+        current_period_end:
+          type: string
+          format: date-time
+          nullable: true
+        revenue_cat_id:
+          type: string
+          nullable: true
+          description: The App User ID in RevenueCat.
+          maxLength: 255
+      required:
+      - plan
+    ThemeChoices:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        image_url:
+          type: string
+      required:
+      - description
+      - id
+      - image_url
+      - name
+    ThemeOption:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+      required:
+      - description
+      - id
+      - name
+    TokenBlacklistRequest:
+      type: object
+      properties:
+        refresh:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - refresh
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+      required:
+      - access
+      - refresh
+    TokenRefreshRequest:
+      type: object
+      properties:
+        refresh:
+          type: string
+          minLength: 1
+      required:
+      - refresh
+    TypeEnum:
+      enum:
+      - ios
+      - android
+      - web
+      type: string
+      description: |-
+        * `ios` - ios
+        * `android` - android
+        * `web` - web
+    UnifiedProfileUpdateRequest:
+      type: object
+      properties:
+        full_name:
+          type: string
+          minLength: 1
+          maxLength: 301
+        new_email:
+          type: string
+          format: email
+          writeOnly: true
+          minLength: 1
+        new_password:
+          type: string
+          writeOnly: true
+          minLength: 1
+        profile_picture:
+          type: string
+          format: binary
+          nullable: true
+        phone_number:
+          type: string
+          maxLength: 20
+        allow_push_notifications:
+          type: boolean
+    UserActivityLog:
+      type: object
+      properties:
+        activity_type:
+          type: string
+          maxLength: 100
+        timestamp:
+          type: string
+          format: date-time
+          readOnly: true
+        ip_address:
+          type: string
+          nullable: true
+        user_agent:
+          type: string
+          nullable: true
+          maxLength: 255
+      required:
+      - activity_type
+      - timestamp
+    UserReport:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+        message:
+          type: string
+          nullable: true
+        screenshot_url:
+          type: string
+          nullable: true
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        is_resolved:
+          type: boolean
+          readOnly: true
+      required:
+      - created_at
+      - email
+      - id
+      - is_resolved
+      - screenshot_url
+      - username
+    UserReportRequest:
+      type: object
+      properties:
+        message:
+          type: string
+          nullable: true
+        screenshot:
+          type: string
+          format: binary
+          writeOnly: true
+          nullable: true
+    VoiceOption:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+      required:
+      - id
+      - name
+  securitySchemes:
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

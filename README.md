@@ -96,6 +96,18 @@ Migrations and Static files are handled automatically by the entrypoint script.
 
 **Base URL:** `http://your-server-ip/api`
 
+### 🌐 Interactive API Reference
+
+MagicTale provides auto-generated OpenAPI 3.0 documentation using `drf-spectacular`.
+
+You can explore the interactive API documentation via the following endpoints:
+
+- **Swagger UI:** `http://localhost:8040/api/docs/` (or `your-domain/api/docs/`) - Provides an interactive UI to test API endpoints directly.
+- **ReDoc:** `http://localhost:8040/api/redoc/` (or `your-domain/api/redoc/`) - Offers a clean, readable reference layout.
+- **OpenAPI Schema:** `http://localhost:8040/api/schema/` (or `your-domain/api/schema/`) - The raw YAML/JSON schema definition.
+
+> **Note:** To test secured endpoints in Swagger UI, click the **Authorize** button at the top and enter your JWT access token.
+
 ### 🔐 Authentication
 
 #### 1. Login

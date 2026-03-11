@@ -14,6 +14,7 @@ from asgiref.sync import async_to_sync
 
 from .models import Subscription, ProcessedWebhookEvent
 from .serializers import SubscriptionSerializer
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -31,6 +32,14 @@ def _send_subscription_update(subscription):
     except Exception as e:
         logger.error(f"Error sending channel update: {e}")
 
+@extend_schema(
+    request=None,
+    responses={
+        200: OpenApiResponse(description="OK"),
+        400: OpenApiResponse(description="Bad Request"),
+        403: OpenApiResponse(description="Forbidden")
+    }
+)
 @csrf_exempt
 @api_view(['POST'])
 @authentication_classes([])

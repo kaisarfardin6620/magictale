@@ -17,7 +17,7 @@ class UserReportSerializer(serializers.ModelSerializer):
             'message': {'required': False}
         }
 
-    def get_screenshot_url(self, obj):
+    def get_screenshot_url(self, obj) -> str | None:
         if obj.screenshot and hasattr(obj.screenshot, 'url'):
             if settings.USE_S3_STORAGE:
                 return obj.screenshot.url

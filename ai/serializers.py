@@ -119,21 +119,21 @@ class VariantSerializer(serializers.ModelSerializer):
             "synopsis", "audio_error"
         ]
 
-    def get_image_url(self, obj):
+    def get_image_url(self, obj) -> str | None:
         if obj.image_url:
             if settings.USE_S3_STORAGE or obj.image_url.startswith("http"):
                 return obj.image_url
             return f"{settings.BACKEND_BASE_URL}{obj.image_url}"
         return None
 
-    def get_audio_url(self, obj):
+    def get_audio_url(self, obj) -> str | None:
         if obj.audio_url:
             if settings.USE_S3_STORAGE:
                 return obj.audio_url
             return f"{settings.BACKEND_BASE_URL}{obj.audio_url}"
         return None
 
-    def get_audio_error(self, obj):
+    def get_audio_error(self, obj) -> str | None:
         error_event = obj.events.filter(kind='done', payload__warning='Audio generation failed').first()
         if error_event:
             return _("Audio generation failed due to quota or service issues.")
@@ -156,30 +156,30 @@ class StoryProjectDetailSerializer(serializers.ModelSerializer):
             "likes_count", "shares_count", "created_at", "started_at", "finished_at", "text", "image_url", "audio_url",
             "audio_duration_seconds", "audio_error", "page_count", "variants"
         ]
-    def get_page_count(self, obj):
+    def get_page_count(self, obj) -> int:
         return getattr(obj, 'page_count_annotated', obj.pages.count())
         
-    def get_image_url(self, obj):
+    def get_image_url(self, obj) -> str | None:
         if obj.image_url:
             if settings.USE_S3_STORAGE or obj.image_url.startswith("http"):
                 return obj.image_url
             return f"{settings.BACKEND_BASE_URL}{obj.image_url}"
         return None
 
-    def get_audio_url(self, obj):
+    def get_audio_url(self, obj) -> str | None:
         if obj.audio_url:
             if settings.USE_S3_STORAGE:
                 return obj.audio_url
             return f"{settings.BACKEND_BASE_URL}{obj.audio_url}"
         return None
 
-    def get_audio_error(self, obj):
+    def get_audio_error(self, obj) -> str | None:
         error_event = obj.events.filter(kind='done', payload__warning='Audio generation failed').first()
         if error_event:
             return _("Audio generation failed due to quota or service issues.")
         return None
     
-    def get_variants(self, obj):
+    def get_variants(self, obj) -> list[dict]:
         # We only cache variants when the story is DONE to avoid stale data during running phase
         if obj.status == StoryProject.Status.DONE:
             cache_key = f"story_variants_{obj.id}"
@@ -207,14 +207,14 @@ class StoryProjectListSerializer(serializers.ModelSerializer):
             "status", "is_saved", "created_at", "image_url", "audio_url", "synopsis"
         ]
 
-    def get_image_url(self, obj):
+    def get_image_url(self, obj) -> str | None:
         if obj.image_url:
             if settings.USE_S3_STORAGE or obj.image_url.startswith("http"):
                 return obj.image_url
             return f"{settings.BACKEND_BASE_URL}{obj.image_url}"
         return None
 
-    def get_audio_url(self, obj):
+    def get_audio_url(self, obj) -> str | None:
         if obj.audio_url:
             if settings.USE_S3_STORAGE:
                 return obj.audio_url

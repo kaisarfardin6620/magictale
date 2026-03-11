@@ -35,6 +35,7 @@ INSTALLED_APPS =[
     'storages',
     'fcm_django', 
     'debug_toolbar',
+    'drf_spectacular',
     'authentication', 'ai', 'subscription', 'dashboard','notifications','support',
 ]
 
@@ -118,6 +119,7 @@ TEMPLATES =[
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': ('rest_framework_simplejwt.authentication.JWTAuthentication',),
     'DEFAULT_RENDERER_CLASSES': ('magictale.api.renderers.CustomJSONRenderer',),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_THROTTLE_CLASSES':['rest_framework.throttling.AnonRateThrottle', 'rest_framework.throttling.UserRateThrottle'],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '100/day',
@@ -129,6 +131,15 @@ REST_FRAMEWORK = {
     },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination', 'PAGE_SIZE': 10,
     'EXCEPTION_HANDLER': 'magictale.api.exceptions.custom_exception_handler',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'MagicTale API API',
+    'DESCRIPTION': 'API documentation for MagicTale.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SECURITY': [{'BearerAuth': []}],
 }
 
 SIMPLE_JWT = {

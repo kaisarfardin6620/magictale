@@ -36,11 +36,24 @@ from rest_framework.exceptions import ValidationError
 from . import services
 from django.utils.translation import gettext as _
 from urllib.parse import urlencode
-
+from drf_spectacular.utils import extend_schema, OpenApiResponse, inline_serializer
+from rest_framework import serializers
 
 class DashboardStatsAPIView(APIView):
     permission_classes = [IsAdminUser]
 
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name='DashboardStatsResponse',
+                fields={
+                    'stats': serializers.DictField(),
+                    'recent_signups': serializers.DictField(),
+                    'recent_stories': serializers.DictField()
+                }
+            )
+        }
+    )
     def get(self, request):
         cache_key = 'dashboard_stats_and_recents'
         cached_data = cache.get(cache_key)
@@ -127,11 +140,26 @@ class SubscriptionManagementView(generics.ListAPIView):
     serializer_class = SubscriptionManagementSerializer
     queryset = Subscription.objects.select_related('user', 'user__profile').order_by('-id')
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['plan', 'status']
     search_fields = ['user__first_name', 'user__last_name', 'user__email']
+
     def _calculate_change(self, old, new):
         if old <= 0: return 100.0 if new > 0 else 0.0
         return round(((new - old) / old) * 100, 2)
+        
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name='SubscriptionManagementResponse',
+                fields={
+                    'stats': serializers.DictField(),
+                    'count': serializers.IntegerField(),
+                    'next': serializers.CharField(allow_null=True),
+                    'previous': serializers.CharField(allow_null=True),
+                    'results': SubscriptionManagementSerializer(many=True)
+                }
+            )
+        }
+    )
     def list(self, request, *args, **kwargs):
         all_subscriptions = Subscription.objects.all()
         now = timezone.now()
@@ -153,6 +181,19 @@ class SubscriptionManagementView(generics.ListAPIView):
 
 class AnalyticsAPIView(APIView):
     permission_classes = [IsAdminUser]
+    
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name='AnalyticsResponse',
+                fields={
+                    'user_growth_over_time': serializers.ListField(child=serializers.DictField()),
+                    'stories_created_over_time': serializers.ListField(child=serializers.DictField()),
+                    'top_performing_stories': serializers.ListField(child=serializers.DictField())
+                }
+            )
+        }
+    )
     def get(self, request):
         now = timezone.now()
         one_year_ago = now - timedelta(days=365)
@@ -182,10 +223,22 @@ class SiteSettingsView(generics.RetrieveUpdateAPIView):
 
 class TimezoneListView(APIView):
     permission_classes = [IsAdminUser]
+    
+    @extend_schema(responses={200: OpenApiResponse(description="List of available Timezones", response=serializers.ListSerializer(child=serializers.CharField()))})
     def get(self, request): return Response(pytz.all_timezones)
 
 class LanguageListView(APIView):
     permission_classes = [IsAdminUser]
+    
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name='LanguageOption',
+                fields={'code': serializers.CharField(), 'name': serializers.CharField()},
+                many=True
+            )
+        }
+    )
     def get(self, request):
         languages = [{"code": code, "name": str(name)} for code, name in settings.LANGUAGES]
         return Response(languages)
@@ -194,6 +247,7 @@ class AdminProfileView(APIView):
     permission_classes = [IsAdminUser]
     parser_classes = [MultiPartParser, FormParser, JSONParser] 
 
+    @extend_schema(responses={200: AdminProfileSerializer})
     def get(self, request):
         user = User.objects.select_related('profile').get(id=request.user.id)
         if not hasattr(user, 'profile'):
@@ -201,6 +255,13 @@ class AdminProfileView(APIView):
         serializer = AdminProfileSerializer(user)
         return Response(serializer.data)
 
+    @extend_schema(
+        request=AdminProfileUpdateSerializer,
+        responses={
+            200: AdminProfileSerializer,
+            400: OpenApiResponse(description="Validation errors.")
+        }
+    )
     def put(self, request):
         user = request.user
 
@@ -227,6 +288,13 @@ class UserManagementViewSet(viewsets.ModelViewSet):
     filterset_fields = ['is_active']
     search_fields = ['first_name', 'last_name', 'email', 'username']
 
+    @extend_schema(
+        request=None,
+        responses={
+            200: OpenApiResponse(description="User approved and notified successfully."),
+            400: OpenApiResponse(description="User is already active.")
+        }
+    )
     @action(detail=True, methods=['post'], url_path='approve')
     def approve_user(self, request, pk=None):
         user = self.get_object()
@@ -242,6 +310,10 @@ class UserManagementViewSet(viewsets.ModelViewSet):
 
         return Response({'status': _('User approved and notified successfully.')}, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        request=None,
+        responses={200: OpenApiResponse(description="User denied and deleted.")}
+    )
     @action(detail=True, methods=['post'], url_path='deny')
     def deny_user(self, request, pk=None):
         user = self.get_object()
@@ -252,6 +324,10 @@ class UserManagementViewSet(viewsets.ModelViewSet):
 
         return Response({'status': _('User {email} has been denied and deleted.').format(email=email)}, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        request=None,
+        responses={200: OpenApiResponse(description="User has been deactivated.")}
+    )
     @action(detail=True, methods=['post'], url_path='deactivate')
     def deactivate_user(self, request, pk=None):
         user = self.get_object()

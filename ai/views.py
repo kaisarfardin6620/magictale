@@ -11,6 +11,8 @@ from django.conf import settings
 from django.contrib.staticfiles.storage import staticfiles_storage
 from django.utils.translation import gettext as _
 from django.core.cache import cache
+from drf_spectacular.utils import extend_schema, OpenApiResponse, inline_serializer
+from rest_framework import serializers
 from .tasks import start_story_generation_pipeline, start_story_remix_pipeline
 from .models import StoryProject
 from .serializers import (
@@ -85,6 +87,9 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_202_ACCEPTED, headers=headers)
 
+    @extend_schema(
+        responses={200: StoryProjectDetailSerializer, 404: OpenApiResponse(description="No stories found.")}
+    )
     @action(detail=False, methods=['get'])
     def latest(self, request):
         latest_story = StoryProject.objects.filter(user=request.user, parent_project__isnull=True).select_related('user').order_by('-created_at').first()
@@ -94,6 +99,21 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(latest_story)
         return Response(serializer.data)
 
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name='ThemeChoices',
+                fields={
+                    'id': serializers.CharField(),
+                    'name': serializers.CharField(),
+                    'description': serializers.CharField(),
+                    'image_url': serializers.CharField()
+                },
+                many=True
+            ),
+            404: OpenApiResponse(description="Theme choices not found.")
+        }
+    )
     @action(detail=True, methods=['get'])
     def choices(self, request, pk=None):
         project = self.get_object()
@@ -112,6 +132,10 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
                 "image_url": request.build_absolute_uri(staticfiles_storage.url(f"images/themes/{choice['image_file']}"))})
         return Response(choices_with_urls)
 
+    @extend_schema(
+        request=None,
+        responses={200: StoryProjectDetailSerializer}
+    )
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
         project = self.get_object()
@@ -127,6 +151,13 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(project)
         return Response(serializer.data)
 
+    @extend_schema(
+        request=None,
+        responses={
+            200: OpenApiResponse(description="Story saved to library."),
+            400: OpenApiResponse(description="Story cannot be saved.")
+        }
+    )
     @action(detail=True, methods=['post'], url_path='save-to-library')
     def save_to_library(self, request, pk=None):
         project = self.get_object()
@@ -141,6 +172,42 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
 class GenerationOptionsView(APIView):
     permission_classes = [permissions.IsAuthenticated, HasActiveSubscription]
 
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name='GenerationOptionsResponse',
+                fields={
+                    'themes': inline_serializer(
+                        name='ThemeOption',
+                        fields={
+                            'id': serializers.CharField(),
+                            'name': serializers.CharField(),
+                            'description': serializers.CharField()
+                        },
+                        many=True
+                    ),
+                    'art_styles': inline_serializer(
+                        name='ArtStyleOption',
+                        fields={
+                            'id': serializers.CharField(),
+                            'name': serializers.CharField(),
+                            'description': serializers.CharField(),
+                            'image_url': serializers.CharField()
+                        },
+                        many=True
+                    ),
+                    'narrator_voices': inline_serializer(
+                        name='VoiceOption',
+                        fields={
+                            'id': serializers.CharField(),
+                            'name': serializers.CharField()
+                        },
+                        many=True
+                    )
+                }
+            )
+        }
+    )
     def get(self, request):
         cache_key = "generation_options_all_v3" 
         cached_data = cache.get(cache_key)

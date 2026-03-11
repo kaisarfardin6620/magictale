@@ -8,7 +8,12 @@ from rest_framework.response import Response
 from .models import Subscription
 from .serializers import SubscriptionSerializer
 from django.utils.translation import gettext as _
+from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 
+@extend_schema(
+    parameters=[OpenApiParameter("id", OpenApiTypes.INT, OpenApiParameter.PATH, description="ID of the subscription")],
+)
 class SubscriptionViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = SubscriptionSerializer

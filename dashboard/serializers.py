@@ -17,13 +17,13 @@ class SubscriptionManagementSerializer(serializers.ModelSerializer):
     class Meta:
         model = Subscription
         fields = ['id', 'user_name', 'current_plan', 'renewal_date', 'payment_method', 'status']
-    def get_user_name(self, obj):
+    def get_user_name(self, obj) -> dict:
         profile_picture_url = obj.user.profile.profile_picture_url if hasattr(obj.user, 'profile') else None
         return {"photo": profile_picture_url, "name": obj.user.get_full_name(), "email": obj.user.email}
-    def get_renewal_date(self, obj):
+    def get_renewal_date(self, obj) -> str | None:
         date_to_format = obj.trial_end if obj.status == 'trialing' else obj.current_period_end
         return date_to_format.strftime('%b %d, %Y') if date_to_format else None
-    def get_payment_method(self, obj):
+    def get_payment_method(self, obj) -> dict:
         return {"cardType": "Mobile Store", "transactionId": "In-App"}
         
     def to_representation(self, instance):
@@ -38,7 +38,7 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
         fields = ['application_name', 'application_logo', 'application_logo_url', 'default_language', 'timezone']
         read_only_fields = ['application_logo_url']
         extra_kwargs = {'application_logo': {'write_only': True, 'required': False}}
-    def get_application_logo_url(self, obj):
+    def get_application_logo_url(self, obj) -> str | None:
         if obj.application_logo and hasattr(obj.application_logo, 'url'):
             if settings.USE_S3_STORAGE:
                 return obj.application_logo.url

@@ -7,6 +7,8 @@ from django.shortcuts import get_object_or_404
 from .models import UserReport, LegalDocument
 from .serializers import UserReportSerializer, LegalDocumentSerializer
 from rest_framework.permissions import IsAdminUser
+from drf_spectacular.utils import extend_schema, OpenApiResponse, inline_serializer
+from rest_framework import serializers
 
 class UserReportViewSet(viewsets.ModelViewSet):
     queryset = UserReport.objects.all().order_by('-created_at')
@@ -27,6 +29,10 @@ class UserReportViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+    @extend_schema(
+        request=None,
+        responses={200: OpenApiResponse(description="Report marked as resolved.")}
+    )
     @action(detail=True, methods=['post'], url_path='resolve')
     def resolve(self, request, pk=None):
         report = self.get_object()
@@ -37,6 +43,7 @@ class UserReportViewSet(viewsets.ModelViewSet):
 class LegalDocumentView(APIView):
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(responses={200: LegalDocumentSerializer})
     def get(self, request, doc_type):
         document = get_object_or_404(LegalDocument, doc_type=doc_type)
         serializer = LegalDocumentSerializer(document)
@@ -45,6 +52,21 @@ class LegalDocumentView(APIView):
 class AdminLegalDocumentView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminUser]
 
+    @extend_schema(
+        request=inline_serializer(
+            name='AdminLegalDocumentRequest',
+            fields={
+                'doc_type': serializers.CharField(),
+                'title': serializers.CharField(required=False),
+                'content': serializers.CharField(required=False),
+                'version': serializers.CharField(required=False)
+            }
+        ),
+        responses={
+            200: LegalDocumentSerializer,
+            400: OpenApiResponse(description="Validation errors or invalid doc_type.")
+        }
+    )
     def post(self, request):
         doc_type = request.data.get('doc_type')
         

@@ -13,6 +13,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework.exceptions import AuthenticationFailed
 from notifications.tasks import create_and_send_notification_task
 from django.utils.translation import gettext as _
+from datetime import datetime
 
 class PasswordValidator:
     @staticmethod
@@ -140,17 +141,17 @@ class ProfileSerializer(serializers.ModelSerializer):
             'profile_picture', 'phone_number', 'allow_push_notifications',
             'subscription_active', 'current_plan', 'trial_end_date'
         ]
-    def get_subscription_active(self, obj):
+    def get_subscription_active(self, obj) -> bool:
         try:
             return obj.user.subscription.status in ['active', 'trialing']
         except (Subscription.DoesNotExist, AttributeError):
             return False
-    def get_current_plan(self, obj):
+    def get_current_plan(self, obj) -> str | None:
         try:
             return obj.user.subscription.get_plan_display()
         except (Subscription.DoesNotExist, AttributeError):
             return None
-    def get_trial_end_date(self, obj):
+    def get_trial_end_date(self, obj) -> datetime | None:
         try:
             return obj.user.subscription.trial_end
         except (Subscription.DoesNotExist, AttributeError):

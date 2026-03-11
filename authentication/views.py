@@ -8,7 +8,10 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
-from django.utils.translation import gettext as _ 
+from drf_spectacular.utils import extend_schema, OpenApiResponse, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from rest_framework import serializers
+from django.utils.translation import gettext as _
 import logging
 import requests
 import jwt
@@ -42,6 +45,10 @@ class MyTokenObtainPairView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'login'
 
+    @extend_schema(
+        request=MyTokenObtainPairSerializer,
+        responses={200: MyTokenObtainPairSerializer}
+    )
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
@@ -50,6 +57,13 @@ class MyTokenObtainPairView(APIView):
 class RegisterDeviceView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        request=FCMDeviceSerializer,
+        responses={
+            200: OpenApiResponse(description="Device registered successfully."),
+            400: OpenApiResponse(description="Validation errors.")
+        }
+    )
     def post(self, request):
         serializer = FCMDeviceSerializer(data=request.data)
         if serializer.is_valid():
@@ -69,6 +83,14 @@ class RegisterDeviceView(APIView):
 
 class SignupAPIView(APIView):
     permission_classes = [AllowAny]
+    
+    @extend_schema(
+        request=SignupSerializer,
+        responses={
+            201: OpenApiResponse(description="User created successfully. Please check your email for verification."),
+            400: OpenApiResponse(description="Validation errors.")
+        }
+    )
     def post(self, request):
         serializer = SignupSerializer(data=request.data)
         if serializer.is_valid():
@@ -91,6 +113,8 @@ class SignupAPIView(APIView):
 
 class EmailVerificationAPIView(APIView):
     permission_classes = [AllowAny]
+    
+    @extend_schema(exclude=True)
     def get(self, request):
         token_uuid = request.GET.get('token')
         context = {'home_url': settings.FRONTEND_URL, 'login_url': f"{settings.FRONTEND_URL}/login"}
@@ -116,6 +140,15 @@ class EmailVerificationAPIView(APIView):
 
 class ResendVerificationEmailAPIView(APIView):
     permission_classes = [AllowAny]
+    
+    @extend_schema(
+        request=ResendVerificationSerializer,
+        responses={
+            200: OpenApiResponse(description="Verification email has been resent."),
+            400: OpenApiResponse(description="Account already active or validation errors."),
+            404: OpenApiResponse(description="User not found.")
+        }
+    )
     def post(self, request):
         serializer = ResendVerificationSerializer(data=request.data)
         if serializer.is_valid():
@@ -136,6 +169,13 @@ class ResendVerificationEmailAPIView(APIView):
 
 class ProfileView(APIView):
     permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        responses={
+            200: ProfileSerializer,
+            404: OpenApiResponse(description="User profile not found.")
+        }
+    )
     def get(self, request):
         cache_key = f"user_profile_{request.user.id}"
         cached_profile = cache.get(cache_key)
@@ -159,6 +199,14 @@ class ProfileView(APIView):
         except UserProfile.DoesNotExist:
             return Response({'detail': _('User profile not found.')}, status=status.HTTP_404_NOT_FOUND)
     
+    @extend_schema(
+        request=UnifiedProfileUpdateSerializer,
+        responses={
+            200: OpenApiResponse(description="Profile updated successfully."),
+            400: OpenApiResponse(description="Validation errors."),
+            404: OpenApiResponse(description="User profile not found.")
+        }
+    )
     def put(self, request):
         try:
             profile = UserProfile.objects.get(user=request.user)
@@ -182,6 +230,12 @@ class PasswordResetInitiateAPIView(APIView):
     throttle_classes = [ScopedRateThrottle] 
     throttle_scope = 'password_reset'      
     
+    @extend_schema(
+        request=PasswordResetRequestSerializer,
+        responses={
+            200: OpenApiResponse(description="If an account exists, a reset link has been sent.")
+        }
+    )
     def post(self, request):
         serializer = PasswordResetRequestSerializer(data=request.data)
         if serializer.is_valid():
@@ -199,6 +253,8 @@ class PasswordResetInitiateAPIView(APIView):
 
 class PasswordResetConfirmView(APIView):
     permission_classes = [AllowAny]
+    
+    @extend_schema(exclude=True)
     def get(self, request, token=None):
         try:
             token_obj = AuthToken.objects.get(token=token, token_type="password_reset", is_used=False)
@@ -209,6 +265,8 @@ class PasswordResetConfirmView(APIView):
         except AuthToken.DoesNotExist:
             context = {'error_message': _('This password reset link is invalid or has expired.'), 'home_url': settings.FRONTEND_URL}
             return render(request, 'verification/verification_error.html', context, status=status.HTTP_400_BAD_REQUEST)
+            
+    @extend_schema(exclude=True)
     def post(self, request, token=None):
         try:
             token_obj = AuthToken.objects.get(token=token, token_type="password_reset", is_used=False)
@@ -243,6 +301,10 @@ class PasswordResetConfirmView(APIView):
 
 class UserActivityLogAPIView(APIView):
     permission_classes =[IsAuthenticated]
+    
+    @extend_schema(
+        responses={200: UserActivityLogSerializer(many=True)}
+    )
     def get(self, request):
         logs = UserActivityLog.objects.filter(user=request.user).order_by('-timestamp')
         serializer = UserActivityLogSerializer(logs, many=True)
@@ -250,6 +312,10 @@ class UserActivityLogAPIView(APIView):
 
 class DeleteAccountView(APIView):
     permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        responses={204: OpenApiResponse(description="Account deleted successfully.")}
+    )
     def delete(self, request):
         request.user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -257,6 +323,24 @@ class DeleteAccountView(APIView):
 class GoogleLoginView(APIView):
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        request=inline_serializer(
+            name='GoogleLoginRequest',
+            fields={'id_token': serializers.CharField()}
+        ),
+        responses={
+            200: inline_serializer(
+                name='GoogleLoginResponse',
+                fields={
+                    'refresh': serializers.CharField(),
+                    'access': serializers.CharField()
+                }
+            ),
+            400: OpenApiResponse(description="Bad request"),
+            401: OpenApiResponse(description="Unauthorized"),
+            403: OpenApiResponse(description="Forbidden")
+        }
+    )
     def post(self, request):
         token_str = request.data.get("id_token")
         if not token_str:
@@ -318,6 +402,27 @@ class AppleLoginView(APIView):
     APPLE_KEYS_CACHE_KEY = "apple_public_keys"
     APPLE_KEYS_URL = "https://appleid.apple.com/auth/keys"
 
+    @extend_schema(
+        request=inline_serializer(
+            name='AppleLoginRequest',
+            fields={
+                'id_token': serializers.CharField(),
+                'email': serializers.CharField(required=False, allow_null=True)
+            }
+        ),
+        responses={
+            200: inline_serializer(
+                name='AppleLoginResponse',
+                fields={
+                    'refresh': serializers.CharField(),
+                    'access': serializers.CharField()
+                }
+            ),
+            400: OpenApiResponse(description="Bad request"),
+            401: OpenApiResponse(description="Unauthorized"),
+            403: OpenApiResponse(description="Forbidden")
+        }
+    )
     def post(self, request):
         id_token_str = request.data.get("id_token")
         if not id_token_str:
