@@ -20,8 +20,11 @@ CORS_ALLOW_CREDENTIALS = True
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:3000')
 USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=not DEBUG)
+CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=not DEBUG)
+SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=not DEBUG)
 
-INSTALLED_APPS = [
+INSTALLED_APPS =[
     'daphne', 'django.contrib.admin', 'django.contrib.auth', 'django.contrib.contenttypes',
     'django.contrib.sessions', 'django.contrib.messages', 'django.contrib.staticfiles',
     'django.contrib.sites', 'corsheaders', 'rest_framework', 'rest_framework_simplejwt',
@@ -37,7 +40,7 @@ INSTALLED_APPS = [
 
 SITE_ID = 1
 
-MIDDLEWARE = [
+MIDDLEWARE =[
     'django.middleware.security.SecurityMiddleware',
     'debug_toolbar.middleware.DebugToolbarMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -67,7 +70,7 @@ if DATABASES['default']['ENGINE'] != 'django.db.backends.sqlite3':
     DATABASES['default']['DISABLE_SERVER_SIDE_CURSORS'] = True
 
 AUTHENTICATION_BACKENDS = ('django.contrib.auth.backends.ModelBackend', 'allauth.account.auth_backends.AuthenticationBackend',)
-AUTH_PASSWORD_VALIDATORS = [
+AUTH_PASSWORD_VALIDATORS =[
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
     {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
@@ -84,7 +87,7 @@ USE_S3_STORAGE = env.bool('USE_S3_STORAGE', default=False)
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_DIRS = [BASE_DIR / 'static']
+STATICFILES_DIRS =[BASE_DIR / 'static']
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
@@ -100,11 +103,11 @@ if USE_S3_STORAGE:
     AWS_QUERYSTRING_EXPIRE = 3600
     MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/'
 
-TEMPLATES = [
+TEMPLATES =[
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates', 'DIRS': [], 'APP_DIRS': True,
         'OPTIONS': {
-            'context_processors': [
+            'context_processors':[
                 'django.template.context_processors.debug', 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth', 'django.contrib.messages.context_processors.messages',
             ],
@@ -115,7 +118,7 @@ TEMPLATES = [
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': ('rest_framework_simplejwt.authentication.JWTAuthentication',),
     'DEFAULT_RENDERER_CLASSES': ('magictale.api.renderers.CustomJSONRenderer',),
-    'DEFAULT_THROTTLE_CLASSES': ['rest_framework.throttling.AnonRateThrottle', 'rest_framework.throttling.UserRateThrottle'],
+    'DEFAULT_THROTTLE_CLASSES':['rest_framework.throttling.AnonRateThrottle', 'rest_framework.throttling.UserRateThrottle'],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '100/day',
         'user': '1000/day',
@@ -208,7 +211,7 @@ LOGGING = {
     },
     'loggers': {
         'django': {
-            'handlers': ['console'],
+            'handlers':['console'],
             'propagate': True,
             'level': 'WARNING',
         },

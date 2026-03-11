@@ -1,8 +1,7 @@
-# ai/consumers.py
-
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
+from django.core.cache import cache
 from .models import StoryProject
 
 class StoryProgressConsumer(AsyncWebsocketConsumer):
@@ -15,9 +14,17 @@ class StoryProgressConsumer(AsyncWebsocketConsumer):
             await self.close(code=4001)
             return
 
-        # CRITICAL FIX: Check if the connected user owns the project
+        rate_limit_key = f"ws_throttle_{self.user.id}"
+        attempts = cache.get(rate_limit_key, 0)
+        
+        if attempts >= 20:
+            await self.close(code=4429)
+            return
+            
+        cache.set(rate_limit_key, attempts + 1, timeout=60)
+
         if not await self._is_project_owner():
-            await self.close(code=4003) # 4003 = Forbidden
+            await self.close(code=4003)
             return
 
         await self.channel_layer.group_add(self.group_name, self.channel_name)
@@ -34,7 +41,4 @@ class StoryProgressConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def _is_project_owner(self):
-        """
-        Runs a DB query to check if the user is the owner of the project.
-        """
         return StoryProject.objects.filter(id=self.project_id, user=self.user).exists()

@@ -15,6 +15,10 @@ app.conf.beat_schedule = {
         'task': 'ai.tasks.cleanup_stalled_projects_task',
         'schedule': crontab(minute=0, hour=3),
     },
+    'flush-expired-jwt-tokens-daily': {
+        'task': 'authentication.tasks.flush_expired_tokens_task',
+        'schedule': crontab(minute=0, hour=2),
+    },
 }
 
 @app.task(bind=True)

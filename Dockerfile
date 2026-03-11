@@ -36,8 +36,9 @@ RUN useradd -m -u 1000 appuser
 
 WORKDIR /app
 
-RUN mkdir -p /app/staticfiles /app/media \
-    && chown -R appuser:appuser /app/staticfiles /app/media
+RUN mkdir -p /app/staticfiles /app/media
+COPY --chown=appuser:appuser . .
+RUN chown -R appuser:appuser /app/staticfiles /app/media
 
 COPY --chown=appuser:appuser docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
