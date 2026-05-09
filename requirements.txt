@@ -121,3 +121,4 @@ PyJWT[crypto]
 gunicorn==23.0.0
 uvicorn[standard]==0.34.0
 drf-spectacular==0.27.2
+audioop-lts==0.2.2

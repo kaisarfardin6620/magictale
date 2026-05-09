@@ -57,7 +57,7 @@ MIDDLEWARE =[
 ]
 
 ROOT_URLCONF = 'magictale.urls'
-ASGI_APPLICATION = 'magictale.asgi:application'
+ASGI_APPLICATION = 'magictale.asgi.application'
 
 DATABASES = {
     'default': env.db(
