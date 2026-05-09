@@ -27,6 +27,7 @@ class APILoggingMiddleware:
         duration = time.time() - start_time
         status_code = response.status_code
 
+        response["X-Response-Time"] = f"{duration:.4f}s"
         log_message = f"[{request.method}] {path} - {status_code} ({round(duration * 1000, 2)}ms)"
 
         if status_code >= 400:
@@ -35,12 +36,16 @@ class APILoggingMiddleware:
             }
             try:
                 if response.content:
-                    error_details["response"] = json.loads(response.content.decode('utf-8'))
+                    import ujson
+                    error_details["response"] = ujson.loads(response.content.decode('utf-8'))
             except:
                 error_details["response"] = "Binary/Non-JSON Content"
             
             logger.error(f"{log_message} | Details: {error_details}")
         else:
-            logger.info(log_message)
+            if duration > 1.0: # Slow AI responses
+                logger.warning(f"SLOW_REQUEST: {log_message}")
+            else:
+                logger.info(log_message)
 
-        return response
+        return response
