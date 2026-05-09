@@ -25,6 +25,9 @@ class UserProfile(models.Model):
     allow_push_notifications = models.BooleanField(default=True)
     parental_consent = models.BooleanField(default=False)
     accepted_terms = models.BooleanField(default=False)
+    apple_subject_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
+    google_subject_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
+
     used_art_styles = models.TextField(
         blank=True, default="",
         help_text="Comma-separated list of art style IDs used by the user during their trial."

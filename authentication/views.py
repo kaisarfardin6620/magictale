@@ -372,15 +372,22 @@ class GoogleLoginView(APIView):
             last_name = decoded.get("family_name", "")
 
             with transaction.atomic():
-                user, created = User.objects.get_or_create(
-                    email=email,
-                    defaults={
-                        "username": email,
-                        "first_name": first_name,
-                        "last_name": last_name,
-                        "is_active": True
-                    }
-                )
+                profile = UserProfile.objects.filter(google_subject_id=decoded.get("sub")).select_related('user').first()
+                if profile:
+                    user = profile.user
+                else:
+                    user, created = User.objects.get_or_create(
+                        email=email,
+                        defaults={
+                            "username": email,
+                            "first_name": first_name,
+                            "last_name": last_name,
+                            "is_active": True
+                        }
+                    )
+                    profile, _ = UserProfile.objects.get_or_create(user=user)
+                    profile.google_subject_id = decoded.get("sub")
+                    profile.save(update_fields=['google_subject_id'])
 
             if not user.is_active:
                 return Response({"detail": _("Account is disabled")}, status=status.HTTP_403_FORBIDDEN)
@@ -487,15 +494,26 @@ class AppleLoginView(APIView):
         return decoded
 
     def _get_or_create_user(self, apple_user_id: str, email: str | None):
+        profile = UserProfile.objects.filter(apple_subject_id=apple_user_id).select_related('user').first()
+        if profile:
+            return profile.user, False
+
         if not email:
             raise ValueError("Email is required on first Apple login")
 
         user = User.objects.filter(email=email).first()
-        if user:
-            return user, False
-
-        return User.objects.create(
-            username=email,
-            email=email,
-            is_active=True,
-        ), True
+        if not user:
+            user = User.objects.create(
+                username=email,
+                email=email,
+                is_active=True,
+            )
+            created = True
+        else:
+            created = False
+        
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        profile.apple_subject_id = apple_user_id
+        profile.save(update_fields=['apple_subject_id'])
+        
+        return user, created

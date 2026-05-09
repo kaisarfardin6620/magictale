@@ -1,6 +1,6 @@
+import logging
 import openai
 from celery import shared_task, chain, group
-import asyncio
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from .models import StoryProject
@@ -10,9 +10,10 @@ from .engine import (
     _save_event,
     _send,
     _cleanup_audio_chunks,
-    generate_text_logic,
-    generate_audio_logic,
-    handle_generation_failure,
+    generate_text_sync,
+    generate_metadata_and_cover_sync,
+    generate_audio_sync,
+    handle_generation_failure_sync,
     _create_variant_project,
     LENGTH_TO_TOKENS
 )
@@ -22,7 +23,7 @@ import time
 import requests
 import io
 from PIL import Image, ImageDraw, ImageFont
-import asyncio
+from asgiref.sync import async_to_sync
 from authentication.models import UserProfile
 from django.utils.translation import gettext as _
 from notifications.tasks import create_and_send_notification_task
@@ -30,6 +31,8 @@ from django.utils import timezone
 from datetime import timedelta
 from urllib.parse import urlparse
 from openai import AsyncOpenAI
+
+logger = logging.getLogger("ai")
 
 RETRYABLE_EXCEPTIONS = (
     openai.APITimeoutError,
@@ -40,8 +43,8 @@ RETRYABLE_EXCEPTIONS = (
 
 def on_pipeline_failure(self, exc, task_id, args, kwargs, einfo):
     project_id = args[0]
-    print(f"PIPELINE FAILED: Task {self.name} for project {project_id} failed permanently. Reason: {exc}")
-    asyncio.run(handle_generation_failure)(project_id, exc)
+    logger.error(f"PIPELINE FAILED: Task {self.name} for project {project_id} failed permanently. Reason: {exc}")
+    handle_generation_failure_sync(project_id, exc)
 
 @shared_task
 def update_user_usage_task(project_id: int):
@@ -50,14 +53,14 @@ def update_user_usage_task(project_id: int):
         subscription = project.user.subscription
 
         if not (subscription.plan == 'master' and subscription.status == 'active'):
-            print(f"Skipping usage update, now handled in serializer, for user {project.user.id}")
+            logger.info(f"Skipping usage update, now handled in serializer, for user {project.user.id}")
         else:
-            print(f"Skipping usage update for master user {project.user.id}")
+            logger.info(f"Skipping usage update for master user {project.user.id}")
 
     except StoryProject.DoesNotExist:
-        print(f"Could not update usage: StoryProject with id={project_id} not found.")
+        logger.error(f"Could not update usage: StoryProject with id={project_id} not found.")
     except Exception as e:
-        print(f"An error occurred while checking user usage for project {project_id}: {e}")
+        logger.error(f"An error occurred while checking user usage for project {project_id}: {e}")
 
 @shared_task(
     bind=True,
@@ -69,14 +72,14 @@ def generate_text_task(self, project_id: int):
     try:
         project = StoryProject.objects.get(id=project_id)
         if project.status == 'canceled':
-            print(f"Project {project_id} canceled. Skipping Text.")
+            logger.info(f"Project {project_id} canceled. Skipping Text.")
             return project_id
     except StoryProject.DoesNotExist:
         return project_id
 
-    print(f"Starting STAGE 1: TEXT for project {project_id}")
-    asyncio.run(generate_text_logic(project_id))
-    print(f"Finished STAGE 1: TEXT for project {project_id}")
+    logger.info(f"Starting STAGE 1: TEXT for project {project_id}")
+    generate_text_sync(project_id)
+    logger.info(f"Finished STAGE 1: TEXT for project {project_id}")
     
     generate_variants_task.delay(project_id)
     
@@ -92,21 +95,21 @@ def generate_variants_task(project_id: int):
         user_plan = project.user.subscription.plan
         user_status = project.user.subscription.status
         
-        print(f"DEBUG: Checking Variants for Project {project_id}. Plan: '{user_plan}', Status: '{user_status}'")
+        logger.info(f"DEBUG: Checking Variants for Project {project_id}. Plan: '{user_plan}', Status: '{user_status}'")
 
         if user_plan != 'master':
-            print(f"STOP: Variants blocked. User is '{user_plan}', required 'master'.")
+            logger.info(f"STOP: Variants blocked. User is '{user_plan}', required 'master'.")
             return
         
         if user_status != 'active':
-            print(f"STOP: Variants blocked. Subscription status is '{user_status}', required 'active'.")
+            logger.info(f"STOP: Variants blocked. Subscription status is '{user_status}', required 'active'.")
             return
         
         if project.parent_project:
-            print(f"STOP: This is already a variant project.")
+            logger.info(f"STOP: This is already a variant project.")
             return
 
-        print(f"START: Fan-out generation for project {project_id} (Master Plan Validated)")
+        logger.info(f"START: Fan-out generation for project {project_id} (Master Plan Validated)")
         
         theme_data = settings.ALL_THEMES_DATA.get(project.theme)
         if not theme_data or not theme_data.get('choices'):
@@ -115,13 +118,13 @@ def generate_variants_task(project_id: int):
         choices = theme_data['choices'][:3]
         
         for choice in choices:
-            variant_project = asyncio.run(_create_variant_project)(project, choice['name'])
+            variant_project = async_to_sync(_create_variant_project)(project, choice['name'])
             start_story_remix_pipeline(variant_project.id, choice['id'])
             
     except StoryProject.DoesNotExist:
         pass
     except Exception as e:
-        print(f"Error generating variants for project {project_id}: {e}")
+        logger.error(f"Error generating variants for project {project_id}: {e}")
 
 
 async def remix_text_logic(project_id: int, choice_id: str):
@@ -175,6 +178,7 @@ async def remix_text_logic(project_id: int, choice_id: str):
     from .engine import _split_text_into_pages, _delete_pages, _create_page
     page_texts = _split_text_into_pages(new_full_text)
     await _delete_pages(project)
+    import asyncio
     await asyncio.gather(*[_create_page(project, i, text) for i, text in enumerate(page_texts, start=1)])
     await _save_event(project, "remix_done", {"pages_created": len(page_texts)})
 
@@ -193,14 +197,14 @@ def remix_text_task(self, project_id: int, choice_id: str):
     except StoryProject.DoesNotExist:
         return project_id
 
-    print(f"Starting REMIX: TEXT for project {project_id}")
-    asyncio.run(remix_text_logic)(project_id, choice_id)
-    print(f"Finished REMIX: TEXT for project {project_id}")
+    logger.info(f"Starting REMIX: TEXT for project {project_id}")
+    async_to_sync(remix_text_logic)(project_id, choice_id)
+    logger.info(f"Finished REMIX: TEXT for project {project_id}")
     return project_id
 
 @shared_task
 def watermark_cover_image_task(project_id: int):
-    print(f"Checking for watermarking for project {project_id}")
+    logger.info(f"Checking for watermarking for project {project_id}")
     try:
         project = StoryProject.objects.select_related('user__subscription').get(id=project_id)
         if project.status == 'canceled':
@@ -209,14 +213,14 @@ def watermark_cover_image_task(project_id: int):
         subscription = project.user.subscription
 
         if not (subscription.plan == 'creator' and subscription.status == 'active'):
-            print(f"Skipping watermark for project {project_id} (User is not Tier 1).")
+            logger.info(f"Skipping watermark for project {project_id} (User is not Tier 1).")
             return project_id
 
         if not project.cover_image_url:
-            print(f"No cover image URL for project {project_id}. Skipping watermark.")
+            logger.info(f"No cover image URL for project {project_id}. Skipping watermark.")
             return project_id
 
-        print(f"Applying watermark for project {project_id} (User is Tier 1).")
+        logger.info(f"Applying watermark for project {project_id} (User is Tier 1).")
         response = requests.get(project.cover_image_url)
         response.raise_for_status()
         
@@ -252,18 +256,18 @@ def watermark_cover_image_task(project_id: int):
         default_storage.delete(file_path)
         default_storage.save(file_path, new_file)
         
-        print(f"Successfully watermarked cover image for project {project_id}")
+        logger.info(f"Successfully watermarked cover image for project {project_id}")
 
     except StoryProject.DoesNotExist:
-        print(f"Error watermarking image: StoryProject with id={project_id} not found.")
+        logger.error(f"Error watermarking image: StoryProject with id={project_id} not found.")
     except Exception as e:
-        print(f"An unexpected error occurred during watermarking for project {project_id}: {e}")
+        logger.error(f"An unexpected error occurred during watermarking for project {project_id}: {e}")
         
     return project_id
 
 @shared_task
 def optimize_cover_image_task(project_id: int):
-    print(f"Starting image optimization for project {project_id}")
+    logger.info(f"Starting image optimization for project {project_id}")
     try:
         project = StoryProject.objects.get(id=project_id)
         if project.status == 'canceled':
@@ -286,9 +290,9 @@ def optimize_cover_image_task(project_id: int):
         default_storage.delete(original_path)
         default_storage.save(original_path, new_file)
         
-        print(f"Successfully optimized image for project {project_id}")
+        logger.info(f"Successfully optimized image for project {project_id}")
     except Exception as e:
-        print(f"An unexpected error occurred during image optimization for project {project_id}: {e}")
+        logger.error(f"An unexpected error occurred during image optimization for project {project_id}: {e}")
         
     return project_id
 
@@ -297,15 +301,14 @@ def generate_metadata_and_cover_task(self, project_id: int):
     try:
         project = StoryProject.objects.get(id=project_id)
         if project.status == 'canceled':
-            print(f"Project {project_id} canceled. Skipping Metadata/Cover.")
+            logger.info(f"Project {project_id} canceled. Skipping Metadata/Cover.")
             return project_id
     except StoryProject.DoesNotExist:
         return project_id
 
-    from .engine import generate_metadata_and_cover_logic
-    print(f"Starting STAGE 2: METADATA/COVER for project {project_id}")
-    asyncio.run(generate_metadata_and_cover_logic)(project_id)
-    print(f"Finished STAGE 2: METADATA/COVER for project {project_id}")
+    logger.info(f"Starting STAGE 2: METADATA/COVER for project {project_id}")
+    generate_metadata_and_cover_sync(project_id)
+    logger.info(f"Finished STAGE 2: METADATA/COVER for project {project_id}")
     
     pipeline = chain(
         optimize_cover_image_task.s(project_id),
@@ -320,21 +323,21 @@ def generate_audio_task(self, project_id: int):
     try:
         project = StoryProject.objects.get(id=project_id)
         if project.status == 'canceled':
-            print(f"Project {project_id} canceled. Skipping Audio.")
+            logger.info(f"Project {project_id} canceled. Skipping Audio.")
             return project_id
     except StoryProject.DoesNotExist:
         return project_id
 
-    print(f"Starting STAGE 3: AUDIO for project {project_id}")
-    asyncio.run(generate_audio_logic)(project_id)
-    print(f"Finished STAGE 3: AUDIO for project {project_id}")
-    asyncio.run(_cleanup_audio_chunks)(project_id)
+    logger.info(f"Starting STAGE 3: AUDIO for project {project_id}")
+    generate_audio_sync(project_id)
+    logger.info(f"Finished STAGE 3: AUDIO for project {project_id}")
+    async_to_sync(_cleanup_audio_chunks)(project_id)
     
-    project = asyncio.run(_reload_project)(project_id)
+    project = async_to_sync(_reload_project)(project_id)
     if project and project.started_at and project.finished_at:
         duration = project.finished_at - project.started_at
         total_seconds = duration.total_seconds()
-        print(f"Project {project_id} generation pipeline complete. Total time: {total_seconds:.2f} seconds.")
+        logger.info(f"Project {project_id} generation pipeline complete. Total time: {total_seconds:.2f} seconds.")
         
         notification_data = {"type": "story_complete", "story_id": project.id}
         create_and_send_notification_task.delay(

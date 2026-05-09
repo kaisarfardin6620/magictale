@@ -23,12 +23,12 @@ from .prompts import get_story_prompts
 from elevenlabs import Voice, VoiceSettings
 from urllib.parse import urlparse
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ai")
 
 LENGTH_TO_TOKENS = {
-    "short": 100, 
-    "medium": 200, 
-    "long": 300, 
+    "short": 500, 
+    "medium": 1000, 
+    "long": 2000, 
 }
 DEFAULT_TEXT_MODEL = getattr(settings, "AI_TEXT_MODEL", "gpt-4o-2024-08-06")
 
@@ -153,14 +153,15 @@ async def _generate_synopsis_and_tags_async(full_text: str):
             metadata = {"title": _("My Magical Story"), "synopsis": _("A magical adventure awaits!"), "tags": "Adventure, Magic"}
     return metadata
 
-async def _generate_cover_image_async(metadata: dict, project: StoryProject):
+async def _generate_cover_image_async(metadata: dict, project: StoryProject, is_full_page=False):
     theme_name = settings.THEME_ID_TO_NAME_MAP.get(project.theme, project.theme)
-    image_prompt = _build_cover_image_prompt(metadata.get("synopsis", theme_name), project)
+    image_prompt = _build_cover_image_prompt(metadata.get("synopsis", theme_name), project, is_full_page=is_full_page)
     
     image_url_db = ""
 
     async with AsyncOpenAI(api_key=settings.OPENAI_API_KEY) as openai_client:
         try:
+            logger.info(f"Generating {'full page' if is_full_page else 'cover'} image for project {project.id}")
             image_resp = await openai_client.images.generate(
                 model=settings.AI_IMAGE_MODEL, prompt=image_prompt, n=1, size="1024x1024",
                 response_format="url", timeout=120.0
@@ -171,7 +172,8 @@ async def _generate_cover_image_async(metadata: dict, project: StoryProject):
                 def save_image():
                     with requests.get(temp_url, stream=True) as resp:
                         if resp.status_code == 200:
-                            file_name = f"covers/story_{project.id}_cover.png"
+                            prefix = "pages" if is_full_page else "covers"
+                            file_name = f"{prefix}/story_{project.id}_{'full' if is_full_page else 'cover'}.png"
                             if default_storage.exists(file_name):
                                 default_storage.delete(file_name)
                             
@@ -189,11 +191,11 @@ async def _generate_cover_image_async(metadata: dict, project: StoryProject):
             if 'content_policy_violation' in str(e):
                 logger.warning(f"Image prompt rejected by safety filter: {e}")
             else:
-                logger.error(f"Failed to generate cover image: {e}")
+                logger.error(f"Failed to generate image: {e}")
         except Exception as e:
-            logger.error(f"Failed to generate cover image: {e}")
+            logger.error(f"Failed to generate image: {e}")
         
-    return {"image_url": image_url_db, "cover_image_url": image_url_db}
+    return image_url_db
 
 def _build_synopsis_prompt(story_text: str) -> str:
     return (
@@ -209,11 +211,16 @@ def _build_synopsis_prompt(story_text: str) -> str:
         "---\n"
     )
 
-def _build_cover_image_prompt(synopsis: str, project: StoryProject) -> str:
+def _build_cover_image_prompt(synopsis: str, project: StoryProject, is_full_page=False) -> str:
     theme_name = settings.THEME_ID_TO_NAME_MAP.get(project.theme, project.theme)
     base_subject = synopsis if synopsis and len(synopsis) > 20 else theme_name
     
-    prompt_subject = f"{base_subject}. The scene is peaceful, cute, whimsical, G-rated, and child-friendly."
+    if is_full_page:
+        prompt_subject = f"A dramatic and detailed full-page scene from a story about: {base_subject}. The focus is on the environment and action."
+    else:
+        prompt_subject = f"A beautiful book cover illustration for a story about: {base_subject}. The focus is on the main theme and character."
+    
+    prompt_subject += " The scene is peaceful, cute, whimsical, G-rated, and child-friendly."
     
     art_style_key = project.art_style
     art_style_description = STYLE_PROMPT_ENHANCERS.get(art_style_key)
@@ -347,12 +354,29 @@ async def generate_metadata_and_cover_logic(project_id: int):
     
     try:
         metadata = await _generate_synopsis_and_tags_async(project.text)
-        image_metadata = await _generate_cover_image_async(metadata, project)
-        await _update_project_state(project, progress=65, **metadata, **image_metadata)
+        
+        cover_url = await _generate_cover_image_async(metadata, project, is_full_page=False)
+        full_image_url = await _generate_cover_image_async(metadata, project, is_full_page=True)
+        
+        await _update_project_state(project, progress=65, **metadata, cover_image_url=cover_url, image_url=full_image_url)
         await _save_event(project, "stage2_done", {})
     except Exception as e:
         await handle_generation_failure(project_id, e)
         raise e
+
+from asgiref.sync import async_to_sync
+
+def generate_text_sync(project_id: int):
+    return async_to_sync(generate_text_logic)(project_id)
+
+def generate_metadata_and_cover_sync(project_id: int):
+    return async_to_sync(generate_metadata_and_cover_logic)(project_id)
+
+def generate_audio_sync(project_id: int):
+    return async_to_sync(generate_audio_logic)(project_id)
+
+def handle_generation_failure_sync(project_id: int, exc: Exception):
+    return async_to_sync(handle_generation_failure)(project_id, exc)
 
 async def generate_audio_logic(project_id: int):
     project = await _reload_project(project_id)
