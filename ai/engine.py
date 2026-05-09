@@ -6,6 +6,7 @@ import requests
 import copy
 import shutil
 import tempfile
+import hashlib
 from pathlib import Path
 from django.utils import timezone
 from asgiref.sync import sync_to_async
@@ -242,19 +243,28 @@ def _fetch_file_content(path):
         return f.read()
 
 async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
-    if page.audio_url and default_storage.exists(urlparse(page.audio_url).path.lstrip('/')):
-        logger.info(f"Audio already exists for Page {page.index}. Downloading from storage to save credits.")
-        try:
-            file_path = urlparse(page.audio_url).path.lstrip('/')
-            audio_content = await _fetch_file_content(file_path)
-            return io.BytesIO(audio_content)
-        except Exception as e:
-            logger.warning(f"Failed to read existing audio for page {page.index}, re-generating: {e}")
+    if page.audio_url:
+        file_path = urlparse(page.audio_url).path.lstrip('/')
+        if await sync_to_async(default_storage.exists)(file_path):
+            logger.info(f"Reusing existing audio for Page {page.id} (Object Cache)")
+            content = await _fetch_file_content(file_path)
+            return io.BytesIO(content)
+
+    text_hash = hashlib.md5(page.text.strip().encode('utf-8')).hexdigest()
+    cache_file_path = f"audio/cache/{text_hash}.mp3"
+    
+    if await sync_to_async(default_storage.exists)(cache_file_path):
+        logger.info(f"Reusing audio for Page {page.id} from Global Cache (Text Hash: {text_hash})")
+        content = await _fetch_file_content(cache_file_path)
+        page.audio_url = await sync_to_async(default_storage.url)(cache_file_path)
+        await sync_to_async(page.save)()
+        return io.BytesIO(content)
 
     client = AsyncElevenLabs(api_key=settings.ELEVENLABS_API_KEY)
     
     try:
         voice_id = project.voice or settings.ALL_NARRATOR_VOICES[0]
+        logger.info(f"Calling ElevenLabs for Page {page.id} (New Text)")
         
         audio_stream = client.text_to_speech.convert(
             voice_id=voice_id,
@@ -278,10 +288,14 @@ async def _generate_audio_for_page(page: StoryPage, project: StoryProject):
             logger.warning(f"Could not calculate duration for page {page.index}: {e}")
 
         chunk_file_path = f"audio/chunks/story_{project.id}_page_{page.index}.mp3"
-        saved_chunk_path = await sync_to_async(default_storage.save)(chunk_file_path, ContentFile(audio_content))
-        page.audio_url = await sync_to_async(default_storage.url)(saved_chunk_path)
         
+        await sync_to_async(default_storage.save)(chunk_file_path, ContentFile(audio_content))
+        if not await sync_to_async(default_storage.exists)(cache_file_path):
+            await sync_to_async(default_storage.save)(cache_file_path, ContentFile(audio_content))
+            
+        page.audio_url = await sync_to_async(default_storage.url)(chunk_file_path)
         await sync_to_async(page.save)()
+        
         return io.BytesIO(audio_content)
     except Exception as e:
         logger.error(f"Failed to generate ElevenLabs audio for page {page.index} (Project {project.id}): {e}")

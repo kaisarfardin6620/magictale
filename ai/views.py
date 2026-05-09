@@ -65,6 +65,11 @@ class StoryProjectViewSet(viewsets.ModelViewSet):
             raise NotFound(_("Invalid Story ID."))
         
         instance = self.get_object()
+        
+        if instance.status == StoryProject.Status.DONE and not instance.audio_url:
+            from .tasks import generate_audio_task
+            generate_audio_task.delay(instance.id)
+
         instance.read_count = F('read_count') + 1
         instance.save(update_fields=['read_count'])
         

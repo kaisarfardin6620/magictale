@@ -119,7 +119,7 @@ def generate_variants_task(project_id: int):
         
         for choice in choices:
             variant_project = async_to_sync(_create_variant_project)(project, choice['name'])
-            start_story_remix_pipeline(variant_project.id, choice['id'])
+            start_variant_generation_pipeline(variant_project.id, choice['id'])
             
     except StoryProject.DoesNotExist:
         pass
@@ -368,7 +368,15 @@ def start_story_remix_pipeline(project_id: int, choice_id: str):
         generate_metadata_and_cover_task.s(),
         generate_audio_task.s()
     )
-    print(f"Dispatching REMIX pipeline for project {project_id}")
+    logger.info(f"Dispatching REMIX pipeline (with Audio) for project {project_id}")
+    pipeline.apply_async()
+
+def start_variant_generation_pipeline(project_id: int, choice_id: str):
+    pipeline = chain(
+        remix_text_task.s(project_id, choice_id),
+        generate_metadata_and_cover_task.s()
+    )
+    logger.info(f"Dispatching VARIANT pipeline (NO Audio) for project {project_id}")
     pipeline.apply_async()
 
 @shared_task
